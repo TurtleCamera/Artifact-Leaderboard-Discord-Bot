@@ -256,18 +256,31 @@ async def remove(interaction: discord.Interaction, user_identifier: str, artifac
         removed = artifacts.pop(artifact_index - 1)
         user_data["max_cv"] = max((arti["cv"] for arti in artifacts), default=0)
         save_data(data)
+
         target_member = interaction.guild.get_member(int(target_user_id))
         display_name = get_display_name(target_user_id, fallback_user=target_member)
-        await interaction.response.send_message(
-            f"Removed artifact #{artifact_index} for **{display_name}**.",
-            ephemeral=True
+
+        # Embed for artifact removal
+        embed = discord.Embed(
+            title="Artifact Removed",
+            color=0xe74c3c
         )
+        embed.description = f"Removed artifact #{artifact_index} for **{display_name}**."
+        await interaction.response.send_message(embed=embed)  # Public message
         return
 
+    # Remove entire user
     removed_name = get_display_name(target_user_id, fallback_user=interaction.guild.get_member(int(target_user_id)))
     data.pop(target_user_id)
     save_data(data)
-    await interaction.response.send_message(f"Removed **{removed_name}** and all their artifacts from the leaderboard.", ephemeral=True)
+
+    # Embed for user removal
+    embed = discord.Embed(
+        title="User Removed",
+        color=0xe74c3c
+    )
+    embed.description = f"Removed **{removed_name}** and all of their artifacts from the leaderboard."
+    await interaction.response.send_message(embed=embed)  # Public message
 
 # /modify command
 @bot.tree.command(name="modify", description="Modify an existing artifact")
