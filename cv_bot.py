@@ -63,6 +63,30 @@ def get_leaderboard_ranks():
 
     return {user_id: rank + 1 for rank, (user_id, _) in enumerate(sorted_leaderboard)}
 
+# Helper function to resolve a user identifier to user_id
+def resolve_user(interaction: discord.Interaction, user_identifier: str = None) -> str:
+    """
+    Returns the user_id (str) corresponding to the given identifier.
+    - If user_identifier is None, defaults to the invoking user.
+    - Matches /name first, then Discord username (unique).
+    """
+    if not user_identifier:
+        return str(interaction.user.id)
+
+    # 1. Match by leaderboard name (/name)
+    for uid, udata in data.items():
+        if udata.get("display_name") == user_identifier:
+            return uid
+
+    # 2. Match by Discord username (unique)
+    if interaction.guild:
+        for member in interaction.guild.members:
+            if member.name == user_identifier:
+                return str(member.id)
+
+    # If not found, return None
+    return None
+
 # Events
 # Bot ready
 @bot.event
@@ -97,7 +121,6 @@ async def name(interaction: discord.Interaction, new_name: str):
         f"Your leaderboard name is now set to: **{new_name}**",
         ephemeral=True
     )
-
 
 # /submit command
 @bot.tree.command(name="submit", description="Submit an artifact (CRIT Rate & CRIT DMG)")
@@ -169,31 +192,15 @@ async def submit(interaction: discord.Interaction, crit_rate: float, crit_dmg: f
 @bot.tree.command(name="list", description="List all artifacts for a user")
 @app_commands.describe(user_identifier="Optional: leaderboard name, mention, or Discord username")
 async def list_artifacts(interaction: discord.Interaction, user_identifier: str = None):
-    target_user_id = None
+    target_user_id = resolve_user(interaction, user_identifier)
 
-    # Determine which user to show
-    if user_identifier:
-        # Try to match by /name first
-        for uid, udata in data.items():
-            if udata.get("display_name") == user_identifier:
-                target_user_id = uid
-                break
-
-        # Then check for a mention
-        if not target_user_id and interaction.guild:
-            if len(interaction.message.mentions) > 0:
-                target_user_id = str(interaction.message.mentions[0].id)
-
-        # Then check for Discord username#discriminator
-        if not target_user_id:
-            for member in interaction.guild.members:
-                if f"{member.name}#{member.discriminator}" == user_identifier:
-                    target_user_id = str(member.id)
-                    break
-
-    # Default to invoking user if none found
-    if not target_user_id:
-        target_user_id = str(interaction.user.id)
+    # If user not found
+    if not target_user_id or target_user_id not in data:
+        await interaction.response.send_message(
+            f"User '{user_identifier}' not found in the leaderboard.",
+            ephemeral=True
+        )
+        return
 
     # Check if user has artifacts
     user_data = data.get(target_user_id)
@@ -228,26 +235,7 @@ async def list_artifacts(interaction: discord.Interaction, user_identifier: str 
     artifact_index="Optional: index of artifact to remove (1-based). Leave empty to remove the whole user"
 )
 async def remove(interaction: discord.Interaction, user_identifier: str, artifact_index: int = None):
-    target_user_id = None
-
-    # Resolve user_identifier to user_id (same logic as /list)
-    # Check /name first
-    for uid, udata in data.items():
-        if udata.get("display_name") == user_identifier:
-            target_user_id = uid
-            break
-
-    # Then check for mention
-    if not target_user_id and interaction.guild:
-        if len(interaction.message.mentions) > 0:
-            target_user_id = str(interaction.message.mentions[0].id)
-
-    # Then check for Discord username#discriminator
-    if not target_user_id:
-        for member in interaction.guild.members:
-            if f"{member.name}#{member.discriminator}" == user_identifier:
-                target_user_id = str(member.id)
-                break
+    target_user_id = resolve_user(interaction, user_identifier)
 
     # If user not found
     if not target_user_id or target_user_id not in data:
@@ -299,25 +287,7 @@ async def remove(interaction: discord.Interaction, user_identifier: str, artifac
     crit_dmg="New CRIT DMG value"
 )
 async def modify(interaction: discord.Interaction, user_identifier: str, artifact_index: int, crit_rate: float, crit_dmg: float):
-    target_user_id = None
-
-    # Resolve user_identifier to user_id (same logic as /list)
-    for uid, udata in data.items():
-        if udata.get("display_name") == user_identifier:
-            target_user_id = uid
-            break
-
-    # Then check for mention
-    if not target_user_id and interaction.guild:
-        if len(interaction.message.mentions) > 0:
-            target_user_id = str(interaction.message.mentions[0].id)
-
-    # Then check for Discord username#discriminator
-    if not target_user_id:
-        for member in interaction.guild.members:
-            if f"{member.name}#{member.discriminator}" == user_identifier:
-                target_user_id = str(member.id)
-                break
+    target_user_id = resolve_user(interaction, user_identifier)
 
     # If user not found
     if not target_user_id or target_user_id not in data:
