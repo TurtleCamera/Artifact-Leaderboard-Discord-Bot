@@ -22,7 +22,7 @@ with open("token", "r") as f:
     TOKEN = f.read().strip()
 
 
-# Data helpers
+# Data helper functions
 def load_data():
     if os.path.exists(DATA_FILE):
         with open(DATA_FILE, "r") as f:
@@ -43,6 +43,20 @@ def get_display_name(user_id, discord_name):
 # Helper function to count artifacts above a CV threshold
 def count_artifacts(artifacts, threshold):
     return sum(1 for arti in artifacts if arti["cv"] >= threshold)
+
+# Helper function to get current leaderboard ranking (user_id -> rank)
+def get_leaderboard_ranks():
+    sorted_leaderboard = sorted(
+        data.items(),
+        key=lambda item: (
+            item[1]["max_cv"],
+            count_artifacts(item[1]["artifacts"], 45),
+            count_artifacts(item[1]["artifacts"], 40)
+        ),
+        reverse=True
+    )
+
+    return {user_id: rank + 1 for rank, (user_id, _) in enumerate(sorted_leaderboard)}
 
 
 # Events
@@ -79,9 +93,16 @@ async def name(interaction: discord.Interaction, new_name: str):
 async def submit(interaction: discord.Interaction, crit_rate: float, crit_dmg: float):
     user_id = str(interaction.user.id)
 
+    # Check if user is new
+    was_new_user = user_id not in data
+
     # Initialize user if not exist
-    if user_id not in data:
+    if was_new_user:
         data[user_id] = {"display_name": None, "artifacts": [], "max_cv": 0}
+
+    # Rank before submission
+    ranks_before = get_leaderboard_ranks()
+    old_rank = ranks_before.get(user_id)
 
     # CV calculation
     cv = crit_rate * 2 + crit_dmg
@@ -93,18 +114,33 @@ async def submit(interaction: discord.Interaction, crit_rate: float, crit_dmg: f
     # Update max CV if needed
     if cv > data[user_id]["max_cv"]:
         data[user_id]["max_cv"] = cv
-        rank_msg = "New highest CRIT value!"
-    else:
-        rank_msg = "Submitted"
 
     save_data(data)
+
+    # Rank AFTER submission
+    ranks_after = get_leaderboard_ranks()
+    new_rank = ranks_after.get(user_id)
+
+    # Build rank change message
+    if was_new_user:
+        rank_msg = f"Entered leaderboard at rank #{new_rank}"
+    elif new_rank < old_rank:
+        rank_msg = f"▲ +{old_rank - new_rank} → #{new_rank}"
+    elif new_rank > old_rank:
+        rank_msg = f"▼ -{new_rank - old_rank} → #{new_rank}"
+    else:
+        rank_msg = f"▬ Unchanged (#{new_rank})"
 
     # Send publicly using webhook
     channel = interaction.channel
     webhook = await channel.create_webhook(name="ArtiBotTempWebhook")
 
     await webhook.send(
-        content=f"Artifact submitted to CRIT Value Leaderboard: {cv:.2f} CV. {rank_msg}",
+        content=(
+            f"Artifact submitted to CRIT Value leaderboard: "
+            f"{cv:.2f} CV\n"
+            f"{rank_msg}"
+        ),
         username=interaction.user.display_name,
         avatar_url=interaction.user.display_avatar.url
     )
@@ -113,7 +149,7 @@ async def submit(interaction: discord.Interaction, crit_rate: float, crit_dmg: f
 
     # Confirm to user
     await interaction.response.send_message(
-        "Your artifact has been submitted publicly!",
+        "Your artifact has been submitted!",
         ephemeral=True
     )
 
