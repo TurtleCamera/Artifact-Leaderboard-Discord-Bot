@@ -159,7 +159,7 @@ async def submit(interaction: discord.Interaction, crit_rate: float, crit_dmg: f
     channel = interaction.channel
     webhook = await channel.create_webhook(name="ArtiBotTempWebhook")
     await webhook.send(
-        content=f"Artifact submitted to CRIT Value leaderboard: {cv:.2f} CV\n{rank_msg}",
+        content=f"Artifact submitted to CRIT Value leaderboard: {cv:.1f} CV\nRank: {rank_msg}",
         username=interaction.user.display_name,
         avatar_url=interaction.user.display_avatar.url
     )
@@ -269,8 +269,8 @@ async def modify(interaction: discord.Interaction, user_identifier: str, artifac
         f"Modified artifact #{artifact_index} for **{get_display_name(target_user_id, interaction.user)}**:\n"
         f"CRIT Rate: {old_cr:.1f} → {crit_rate:.1f}\n"
         f"CRIT DMG: {old_cd:.1f} → {crit_dmg:.1f}\n"
-        f"CV: {old_cv:.2f} → {artifact['cv']:.2f}\n"
-        f"Leaderboard change: {rank_msg}",
+        f"CV: {old_cv:.1f} → {artifact['cv']:.1f}\n"
+        f"Rank: {rank_msg}",
         ephemeral=True
     )
 
@@ -345,14 +345,17 @@ async def scan(interaction: discord.Interaction, image: discord.Attachment):
     new_rank = get_leaderboard_ranks().get(user_id)
     rank_msg = build_rank_message(old_rank, new_rank, was_new_user)
 
-    # Send scan result
+    # Send scan result with the uploaded image
     await interaction.followup.send(
-        f"Scan result:\n"
-        f"CRIT Rate: {crit_rate:.1f}\n"
-        f"CRIT DMG: {crit_dmg:.1f}\n"
-        f"CV: {cv:.2f}\n"
-        f"{rank_msg}\n\n"
-        f"Scan artifacts using /scan",
+        content=(
+            f"Scan result:\n"
+            f"CRIT Rate: {crit_rate:.1f}\n"
+            f"CRIT DMG: {crit_dmg:.1f}\n"
+            f"CV: {cv:.1f}\n"
+            f"Rank: {rank_msg}\n\n"
+            f"Scan artifacts using /scan"
+        ),
+        file=discord.File(fp=io.BytesIO(image_bytes), filename=image.filename),
         ephemeral=False
     )
 
