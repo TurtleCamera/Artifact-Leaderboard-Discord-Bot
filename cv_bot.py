@@ -437,9 +437,7 @@ async def modify(interaction: discord.Interaction, user_identifier: str, artifac
     await interaction.response.send_message(embed=embed)
 
 # /scan command
-@bot.tree.command(name="scan", description="Scan an artifact screenshot")
-@app_commands.describe(image="Upload a screenshot of your artifact")
-async def scan(interaction: discord.Interaction, image: discord.Attachment):
+async def handle_scan(interaction: discord.Interaction, image: discord.Attachment):
     await interaction.response.defer()
     user_id = str(interaction.user.id)
     was_new_user = user_id not in data
@@ -452,26 +450,30 @@ async def scan(interaction: discord.Interaction, image: discord.Attachment):
         ocr_results = ocr_reader.readtext(img_np)
         ocr_text = "\n".join([text for _, text, _ in ocr_results])
     except Exception as e:
-        await interaction.followup.send(f"OCR failed to process the image.\nError: {str(e)}", ephemeral=True)
+        await interaction.followup.send(
+            f"OCR failed to process the image.\nError: {str(e)}",
+            ephemeral=True
+        )
         return
 
     crit_rate, crit_dmg, circlet_detected = parse_artifact_text(ocr_text)
 
     if circlet_detected:
-        await interaction.followup.send("Circlets are not allowed, sorry!", ephemeral=True)
+        await interaction.followup.send(
+            "Circlets are not allowed, sorry!",
+            ephemeral=True
+        )
         return
 
-    # Fallback to 0 if OCR fails
     crit_rate = crit_rate or 0.0
     crit_dmg = crit_dmg or 0.0
 
-    # Validate stats
     crit_rate, crit_dmg, error = validate_artifact_stats(crit_rate, crit_dmg)
     if error:
-        # For scan, just fallback to 0 if invalid
         crit_rate = crit_dmg = 0.0
 
     cv = calculate_cv(crit_rate, crit_dmg)
+
     artifact = {"crit_rate": crit_rate, "crit_dmg": crit_dmg, "cv": cv}
     data[user_id]["artifacts"].append(artifact)
     data[user_id]["max_cv"] = max(data[user_id]["max_cv"], cv)
@@ -490,9 +492,18 @@ async def scan(interaction: discord.Interaction, image: discord.Attachment):
 
     await interaction.followup.send(
         embed=embed,
-        file=discord.File(fp=io.BytesIO(image_bytes), filename=image.filename),
-        ephemeral=False
+        file=discord.File(io.BytesIO(image_bytes), filename=image.filename)
     )
+
+@bot.tree.command(name="scan", description="Scan an artifact screenshot")
+@app_commands.describe(image="Upload a screenshot of your artifact")
+async def scan(interaction: discord.Interaction, image: discord.Attachment):
+    await handle_scan(interaction, image)
+
+@bot.tree.command(name="s", description="Shortcut for /scan")
+@app_commands.describe(image="Upload a screenshot of your artifact")
+async def scan_short(interaction: discord.Interaction, image: discord.Attachment):
+    await handle_scan(interaction, image)
 
 # /leaderboard
 @bot.tree.command(name="leaderboard", description="Display the CRIT Value leaderboard publicly")
