@@ -406,14 +406,22 @@ async def scan(interaction: discord.Interaction, image: discord.Attachment):
     crit_rate = crit_dmg = None
     for line in ocr_text.splitlines():
         line_clean = line.lower().replace("%", "").strip()
-        numbers = re.findall(r"\d+\.?\d*", line_clean)
+        # Match numbers with '.' or ',' as decimal separator
+        numbers = re.findall(r"\d+[.,]?\d*", line_clean)
         if not numbers:
             continue
 
+        # Convert last number in line to float, replacing ',' with '.'
+        last_number = numbers[-1].replace(',', '.')
+        try:
+            value = float(last_number)
+        except ValueError:
+            continue
+
         if "dgt crit" in line_clean or "crit dmg" in line_clean:
-            crit_dmg = float(numbers[-1])
+            crit_dmg = value
         elif "taux crit" in line_clean or "crit rate" in line_clean:
-            crit_rate = float(numbers[-1])
+            crit_rate = value
 
     if crit_rate is None or crit_dmg is None:
         await interaction.followup.send(
