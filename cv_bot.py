@@ -372,6 +372,12 @@ async def scan(interaction: discord.Interaction, image: discord.Attachment):
 
     await interaction.response.defer()  # Allow processing time
 
+    # Determine if user is new
+    user_id = str(interaction.user.id)
+    was_new_user = user_id not in data
+    if was_new_user:
+        data[user_id] = {"display_name": None, "artifacts": [], "max_cv": 0}
+
     try:
         # Download the image bytes and convert to NumPy array
         image_bytes = await image.read()
@@ -419,47 +425,42 @@ async def scan(interaction: discord.Interaction, image: discord.Attachment):
     # Calculate CV
     cv = crit_rate * 2 + crit_dmg
 
-    # Temporarily calculate rank change
-    user_id = str(interaction.user.id)
-    if user_id not in data:
-        data[user_id] = {"display_name": None, "artifacts": [], "max_cv": 0}
-
-    ranks_before = get_leaderboard_ranks()
-    old_rank = ranks_before.get(user_id)
-
-    # Temporarily add artifact
+    # Temporarily add artifact for rank calculation
     temp_artifact = {"crit_rate": crit_rate, "crit_dmg": crit_dmg, "cv": cv}
     data[user_id]["artifacts"].append(temp_artifact)
     data[user_id]["max_cv"] = max(data[user_id]["max_cv"], cv)
 
+    # Calculate leaderboard ranks
+    ranks_before = get_leaderboard_ranks()
+    old_rank = ranks_before.get(user_id)
     ranks_after = get_leaderboard_ranks()
     new_rank = ranks_after.get(user_id, 1)
 
     # Determine rank change message
-    if old_rank is None:
-        rank_msg = f"Entered leaderboard at rank #{new_rank} <:LumineStonks:840192030918967316>"
+    if was_new_user:
+        rank_msg = f"Entered leaderboard at rank #{new_rank}"
     elif new_rank < old_rank:
-        rank_msg = f"▲ +{old_rank - new_rank} → #{new_rank} <:LumineStonks:840192030918967316>"
+        rank_msg = f"▲ +{old_rank - new_rank} → #{new_rank}"
     elif new_rank > old_rank:
         rank_msg = f"▼ -{new_rank - old_rank} → #{new_rank}"
     else:
-        rank_msg = f"Unchanged Rank: {new_rank}"
+        rank_msg = f"▬ Unchanged (#{new_rank})"
 
-    # Remove temporary artifact
+    # Remove temporary artifact (do not submit yet)
     data[user_id]["artifacts"].pop()
     if data[user_id]["artifacts"]:
         data[user_id]["max_cv"] = max(arti["cv"] for arti in data[user_id]["artifacts"])
     else:
         data[user_id]["max_cv"] = 0
 
-    # Send result
+    # Send scan result
     await interaction.followup.send(
         f"Scan result:\n"
         f"CRIT Rate: {crit_rate:.1f}\n"
         f"CRIT DMG: {crit_dmg:.1f}\n"
         f"CV: {cv:.2f}\n"
         f"{rank_msg}\n\n"
-        f"Scan your arti with /scan",
+        f"Scan your artifact with /scan",
         ephemeral=False
     )
 
