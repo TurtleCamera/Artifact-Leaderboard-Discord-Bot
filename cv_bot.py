@@ -90,6 +90,7 @@ async def name(interaction: discord.Interaction, new_name: str):
         ephemeral=True
     )
 
+
 # /submit command
 @bot.tree.command(name="submit", description="Submit an artifact (CRIT Rate & CRIT DMG)")
 @app_commands.describe(crit_rate="CRIT Rate of artifact", crit_dmg="CRIT DMG of artifact")
@@ -153,6 +154,62 @@ async def submit(interaction: discord.Interaction, crit_rate: float, crit_dmg: f
     # Confirm to user
     await interaction.response.send_message(
         "Your artifact has been submitted!",
+        ephemeral=True
+    )
+
+# /list command
+@bot.tree.command(name="list", description="List all artifacts for a user")
+@app_commands.describe(user_identifier="Optional: leaderboard name, mention, or Discord username")
+async def list_artifacts(interaction: discord.Interaction, user_identifier: str = None):
+    target_user_id = None
+
+    # Determine which user to show
+    if user_identifier:
+        # Try to match by /name first
+        for uid, udata in data.items():
+            if udata.get("display_name") == user_identifier:
+                target_user_id = uid
+                break
+
+        # Then check for a mention
+        if not target_user_id and interaction.guild:
+            if len(interaction.message.mentions) > 0:
+                target_user_id = str(interaction.message.mentions[0].id)
+
+        # Then check for Discord username#discriminator
+        if not target_user_id:
+            for member in interaction.guild.members:
+                if f"{member.name}#{member.discriminator}" == user_identifier:
+                    target_user_id = str(member.id)
+                    break
+
+    # Default to invoking user if none found
+    if not target_user_id:
+        target_user_id = str(interaction.user.id)
+
+    # Check if user has artifacts
+    user_data = data.get(target_user_id)
+    if not user_data or not user_data.get("artifacts"):
+        await interaction.response.send_message("No artifacts found for this user.", ephemeral=True)
+        return
+
+    # Build artifact table
+    lines = [
+        "Index | CR    | CD    | CV    ",
+        "------+-------+-------+-------"
+    ]
+    for idx, arti in enumerate(user_data["artifacts"], start=1):
+        lines.append(
+            f"{idx:<5} | "
+            f"{arti['crit_rate']:<5.1f} | "
+            f"{arti['crit_dmg']:<5.1f} | "
+            f"{arti['cv']:<5.2f}"
+        )
+
+    artifact_text = "\n".join(lines)
+    display_name = get_display_name(target_user_id, interaction.user)
+    await interaction.response.send_message(
+        f"Artifacts for **{display_name}**:\n```\n{artifact_text}\n```",
         ephemeral=True
     )
 
