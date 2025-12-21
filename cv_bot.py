@@ -92,29 +92,20 @@ async def resolve_user(interaction: discord.Interaction, user_identifier: str = 
 
     user_identifier_lower = user_identifier.lower()
 
-    # 1. Check if identifier is a mention <@!id> or <@id>
-    match = re.match(r"<@!?(\d+)>", user_identifier)
-    if match:
-        uid = match.group(1)
-        if uid in data:
-            return uid
-
-    # 2. Match leaderboard display name (case-insensitive)
+    # 1. Match leaderboard display name (case-insensitive)
     for uid, udata in data.items():
         display_name = udata.get("display_name")
         if display_name and display_name.lower() == user_identifier_lower:
             return uid
 
-    # 3. Match stored Discord username (case-insensitive)
-    for uid, udata in data.items():
-        username = udata.get("username")
-        if username and username.lower() == user_identifier_lower:
-            return uid
+    # 2. Match guild member display name (nickname or username fallback)
+    for member in interaction.guild.members:
+        if member.display_name.lower() == user_identifier_lower:
+            return str(member.id)
 
-    # 4. Match plain username in guild (case-insensitive)
+    # 3. Match plain Discord username (case-insensitive)
     for member in interaction.guild.members:
         if member.name.lower() == user_identifier_lower:
-            ensure_user(str(member.id), member)
             return str(member.id)
 
     return None
@@ -139,7 +130,6 @@ async def on_ready():
     # Backfill missing usernames in data.json
     data_changed = False
     for uid, udata in data.items():
-        # Only backfill if username is missing or empty
         if not udata.get("username"):
             try:
                 user = await bot.fetch_user(int(uid))
@@ -148,8 +138,6 @@ async def on_ready():
                     data_changed = True
             except Exception:
                 continue
-
-    # Save only if we actually changed something
     if data_changed:
         save_data(data)
         print("Backfilled missing usernames in data.json")
@@ -160,7 +148,6 @@ async def on_ready():
     guild = discord.Object(id=GUILD_ID)
 
     try:
-        # Force guild-specific sync
         bot.tree.copy_global_to(guild=guild)
         synced = await bot.tree.sync(guild=guild)
         print(f"Synced {len(synced)} command(s) to guild {GUILD_ID}")
@@ -176,7 +163,7 @@ async def name(interaction: discord.Interaction, new_name: str):
     user_id = str(interaction.user.id)
     ensure_user(user_id)
     data[user_id]["display_name"] = new_name
-    save_data(data)  # Save after update
+    save_data(data)
     await interaction.response.send_message(
         f"Your leaderboard name is now set to: **{new_name}**",
         ephemeral=True
@@ -192,18 +179,15 @@ async def submit(interaction: discord.Interaction, crit_rate: float, crit_dmg: f
 
     old_rank = get_leaderboard_ranks().get(user_id)
 
-    # Calculate CV and add artifact
     cv = calculate_cv(crit_rate, crit_dmg)
     artifact = {"crit_rate": crit_rate, "crit_dmg": crit_dmg, "cv": cv}
     data[user_id]["artifacts"].append(artifact)
     data[user_id]["max_cv"] = max(data[user_id]["max_cv"], cv)
-    save_data(data)  # Save after addition
+    save_data(data)
 
-    # Calculate new rank and build message
     new_rank = get_leaderboard_ranks().get(user_id)
     rank_msg = build_rank_message(old_rank, new_rank, was_new_user)
 
-    # Use temporary webhook to preserve user display
     channel = interaction.channel
     webhook = await channel.create_webhook(name="ArtiBotTempWebhook")
     await webhook.send(
@@ -233,16 +217,16 @@ async def list_artifacts(interaction: discord.Interaction, user_identifier: str 
         await interaction.response.send_message("No artifacts found for this user.", ephemeral=True)
         return
 
-    # Build artifact list table
     lines = [
         "Index | CR   | CD   | CV   ",
         "------+------+------+-----"
     ]
-    for idx, arti in enumerate(user_data["artifacts"], start=1):  # 1-based indexing
+    for idx, arti in enumerate(user_data["artifacts"], start=1):
         lines.append(f"{idx:<5} | {arti['crit_rate']:<4.1f} | {arti['crit_dmg']:<4.1f} | {arti['cv']:<4.1f}")
 
     artifact_text = "\n".join(lines)
-    display_name = get_display_name(target_user_id, interaction.user)
+    target_member = interaction.guild.get_member(int(target_user_id))
+    display_name = get_display_name(target_user_id, fallback_user=target_member)
     await interaction.response.send_message(f"Artifacts for **{display_name}**:\n```\n{artifact_text}\n```", ephemeral=True)
 
 # /remove command
@@ -268,20 +252,20 @@ async def remove(interaction: discord.Interaction, user_identifier: str, artifac
             )
             return
 
-        # Remove specified artifact
         removed = artifacts.pop(artifact_index - 1)
         user_data["max_cv"] = max((arti["cv"] for arti in artifacts), default=0)
-        save_data(data)  # Save after artifact removal
+        save_data(data)
+        target_member = interaction.guild.get_member(int(target_user_id))
+        display_name = get_display_name(target_user_id, fallback_user=target_member)
         await interaction.response.send_message(
-            f"Removed artifact #{artifact_index} for **{get_display_name(target_user_id, interaction.user)}**.",
+            f"Removed artifact #{artifact_index} for **{display_name}**.",
             ephemeral=True
         )
         return
 
-    # Remove entire user
-    removed_name = get_display_name(target_user_id, interaction.user)
+    removed_name = get_display_name(target_user_id, fallback_user=interaction.guild.get_member(int(target_user_id)))
     data.pop(target_user_id)
-    save_data(data)  # Save after user removal
+    save_data(data)
     await interaction.response.send_message(f"Removed **{removed_name}** and all their artifacts from the leaderboard.", ephemeral=True)
 
 # /modify command
@@ -309,17 +293,18 @@ async def modify(interaction: discord.Interaction, user_identifier: str, artifac
     artifact = artifacts[artifact_index - 1]
     old_cv, old_cr, old_cd = artifact["cv"], artifact["crit_rate"], artifact["crit_dmg"]
 
-    # Update artifact values
     artifact["crit_rate"], artifact["crit_dmg"], artifact["cv"] = crit_rate, crit_dmg, calculate_cv(crit_rate, crit_dmg)
     data[target_user_id]["max_cv"] = max((arti["cv"] for arti in artifacts), default=0)
-    save_data(data)  # Save after modification
+    save_data(data)
 
     old_rank = get_leaderboard_ranks().get(target_user_id)
     new_rank = get_leaderboard_ranks().get(target_user_id)
     rank_msg = build_rank_message(old_rank, new_rank)
 
+    target_member = interaction.guild.get_member(int(target_user_id))
+    display_name = get_display_name(target_user_id, fallback_user=target_member)
     await interaction.response.send_message(
-        f"Modified artifact #{artifact_index} for **{get_display_name(target_user_id, interaction.user)}**:\n"
+        f"Modified artifact #{artifact_index} for **{display_name}**:\n"
         f"CRIT Rate: {old_cr:.1f} → {crit_rate:.1f}\n"
         f"CRIT DMG: {old_cd:.1f} → {crit_dmg:.1f}\n"
         f"CV: {old_cv:.1f} → {artifact['cv']:.1f}\n"
@@ -331,37 +316,26 @@ async def modify(interaction: discord.Interaction, user_identifier: str, artifac
 @bot.tree.command(name="scan", description="Scan an artifact screenshot")
 @app_commands.describe(image="Upload a screenshot of your artifact")
 async def scan(interaction: discord.Interaction, image: discord.Attachment):
-    await interaction.response.defer()  # Allow processing time
+    await interaction.response.defer()
     user_id = str(interaction.user.id)
     was_new_user = user_id not in data
     ensure_user(user_id)
 
     try:
-        # Download the image and convert to NumPy array
         image_bytes = await image.read()
         img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
         img_np = np.array(img)
-
-        # Run OCR
         ocr_results = ocr_reader.readtext(img_np)
         ocr_text = "\n".join([text for _, text, _ in ocr_results])
     except Exception as e:
-        await interaction.followup.send(
-            f"OCR failed to process the image.\nError: {str(e)}",
-            ephemeral=True
-        )
+        await interaction.followup.send(f"OCR failed to process the image.\nError: {str(e)}", ephemeral=True)
         return
 
-    # Detect circlets
     if any(word.lower() in ocr_text.lower() for word in ["circlet", "diadème"]):
-        await interaction.followup.send(
-            "Circlets are not allowed, sorry!",
-            ephemeral=True
-        )
+        await interaction.followup.send("Circlets are not allowed, sorry!", ephemeral=True)
         return
 
-    # Extract CRIT Rate and CRIT DMG using regex
-    crit_rate = crit_dmg = 0.0  # default to 0
+    crit_rate = crit_dmg = 0.0
     for line in ocr_text.splitlines():
         line_clean = line.lower().replace("%", "").strip()
         numbers = re.findall(r"\d+[.,]?\d*", line_clean)
@@ -371,27 +345,21 @@ async def scan(interaction: discord.Interaction, image: discord.Attachment):
             value = float(numbers[-1].replace(',', '.'))
         except ValueError:
             continue
-
         if "dgt crit" in line_clean or "crit dmg" in line_clean:
             crit_dmg = value
         elif "taux crit" in line_clean or "crit rate" in line_clean:
             crit_rate = value
 
-    # Now crit_rate and crit_dmg are always numbers (0 if not found)
     cv = calculate_cv(crit_rate, crit_dmg)
-
-    # Permanently add artifact
     artifact = {"crit_rate": crit_rate, "crit_dmg": crit_dmg, "cv": cv}
     data[user_id]["artifacts"].append(artifact)
     data[user_id]["max_cv"] = max(data[user_id]["max_cv"], cv)
-    save_data(data)  # Save permanently
+    save_data(data)
 
-    # Calculate leaderboard ranks
     old_rank = get_leaderboard_ranks().get(user_id)
     new_rank = get_leaderboard_ranks().get(user_id)
     rank_msg = build_rank_message(old_rank, new_rank, was_new_user)
 
-    # Send scan result with the uploaded image
     await interaction.followup.send(
         content=(
             f"Scan result:\n"
@@ -424,7 +392,6 @@ async def leaderboard(interaction: discord.Interaction):
     lines = ["#  | Name     | Max  | 45+ | 40+", "---+----------+------+-----+----"]
 
     for rank, (user_id, user_data) in enumerate(sorted_leaderboard[:MAX_LEADERBOARD_PLAYERS], start=1):
-        # Try to get the member from guild cache first; fetch from API if not cached
         member = interaction.guild.get_member(int(user_id))
         if not member:
             try:
@@ -432,7 +399,6 @@ async def leaderboard(interaction: discord.Interaction):
             except Exception:
                 member = None
 
-        # Use leaderboard display name or Discord username
         name = get_display_name(user_id, fallback_user=member)
         if len(name) > MAX_NAME_LENGTH:
             name = name[:MAX_NAME_LENGTH - 1] + "-"
