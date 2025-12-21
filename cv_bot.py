@@ -49,13 +49,13 @@ def ensure_user(user_id: str):
         data[user_id] = {"display_name": None, "artifacts": [], "max_cv": 0}
 
 # Get display name
-def get_display_name(user_id: str, fallback_user: discord.Member = None):
+def get_display_name(user_id: str, fallback_user=None):
     user_data = data.get(str(user_id), {})
     display_name = user_data.get("display_name")
     if display_name:
         return display_name
     if fallback_user:
-        return fallback_user.display_name
+        return getattr(fallback_user, "display_name", fallback_user.name)
     return "Unknown"
 
 # Count artifacts above a CV threshold
@@ -308,7 +308,7 @@ async def scan(interaction: discord.Interaction, image: discord.Attachment):
         return
 
     # Extract CRIT Rate and CRIT DMG using regex
-    crit_rate = crit_dmg = None
+    crit_rate = crit_dmg = 0.0  # default to 0
     for line in ocr_text.splitlines():
         line_clean = line.lower().replace("%", "").strip()
         numbers = re.findall(r"\d+[.,]?\d*", line_clean)
@@ -324,14 +324,7 @@ async def scan(interaction: discord.Interaction, image: discord.Attachment):
         elif "taux crit" in line_clean or "crit rate" in line_clean:
             crit_rate = value
 
-    if crit_rate is None or crit_dmg is None:
-        await interaction.followup.send(
-            "Could not detect CRIT Rate and CRIT DMG in the screenshot.",
-            ephemeral=True
-        )
-        return
-
-    # Calculate CV
+    # Now crit_rate and crit_dmg are always numbers (0 if not found)
     cv = calculate_cv(crit_rate, crit_dmg)
 
     # Permanently add artifact
