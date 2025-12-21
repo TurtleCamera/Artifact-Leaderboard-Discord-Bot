@@ -4,6 +4,9 @@ from discord import app_commands
 import json
 import os
 
+# Max name length on leaderboard
+MAX_NAME_LENGTH = 15
+
 # Setup intents
 intents = discord.Intents.default()
 intents.message_content = True  # optional for future features
@@ -87,7 +90,10 @@ async def submit(interaction: discord.Interaction, crit_rate: float, crit_dmg: f
         rank_msg = "Submitted"
 
     save_data(data)
-    display_name = get_display_name(user_id, user_name)
+
+    display_name = get_display_name(user_id, "Unknown")
+    if len(display_name) > MAX_NAME_LENGTH:
+        display_name = display_name[:MAX_NAME_LENGTH] + "-"
 
     # Send publicly using webhook
     channel = interaction.channel  # channel where command was used
@@ -132,14 +138,22 @@ async def leaderboard(interaction: discord.Interaction):
         color=discord.Color.gold()
     )
 
-    # Add each player as a field
-    for rank, (user_id, user_data) in enumerate(sorted_leaderboard, start=1):
+    # Get top player thumbnail
+    top_user_id, top_user_data = sorted_leaderboard[0]
+    top_member = interaction.guild.get_member(int(top_user_id))
+    if top_member:
+        embed.set_thumbnail(url=top_member.display_avatar.url)
+
+    # Add each player as a field (limit to 25)
+    for rank, (user_id, user_data) in enumerate(sorted_leaderboard[:25], start=1):
         display_name = get_display_name(user_id, "Unknown")
+        if len(display_name) > MAX_NAME_LENGTH:
+            display_name = display_name[:MAX_NAME_LENGTH] + "-"
         count_45 = count_artifacts(user_data["artifacts"], 45)
         count_40 = count_artifacts(user_data["artifacts"], 40)
         max_cv = user_data["max_cv"]
 
-        # Optional: add emoji for top 3
+        # Optional: top 3 emoji
         if rank == 1:
             rank_emoji = "🥇"
         elif rank == 2:
@@ -150,8 +164,8 @@ async def leaderboard(interaction: discord.Interaction):
             rank_emoji = f"{rank}."
 
         embed.add_field(
-            name=f"{rank_emoji} {display_name}",
-            value=f"45+: {count_45} | 40+: {count_40} | Max CV: {max_cv:.2f}",
+            name=f"{rank}. {display_name}",
+            value=f"Max: {max_cv:.2f} | 45+: {count_45} | 40+: {count_40}",
             inline=False
         )
 
