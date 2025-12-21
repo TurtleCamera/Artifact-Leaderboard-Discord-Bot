@@ -69,9 +69,17 @@ def get_leaderboard_ranks():
 async def on_ready():
     print(f"Logged in as {bot.user} (ID: {bot.user.id})")
     print("------")
+
+    # Load guild ID
+    with open("guild_id", "r") as f:
+        GUILD_ID = int(f.read().strip())
+    guild = discord.Object(id=GUILD_ID)
+
     try:
-        synced = await bot.tree.sync()
-        print(f"Synced {len(synced)} command(s)")
+        # Force guild-specific sync
+        bot.tree.copy_global_to(guild=guild)
+        synced = await bot.tree.sync(guild=guild)
+        print(f"Synced {len(synced)} command(s) to guild {GUILD_ID}")
     except Exception as e:
         print(f"Error syncing commands: {e}")
 
