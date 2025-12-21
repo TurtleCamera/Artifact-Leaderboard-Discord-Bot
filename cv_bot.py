@@ -345,8 +345,7 @@ async def scan(interaction: discord.Interaction, image: discord.Attachment):
             f"CRIT Rate: {crit_rate:.1f}\n"
             f"CRIT DMG: {crit_dmg:.1f}\n"
             f"CV: {cv:.1f}\n"
-            f"Rank: {rank_msg}\n\n"
-            f"Scan artifacts using /scan"
+            f"Rank: {rank_msg}"
         ),
         file=discord.File(fp=io.BytesIO(image_bytes), filename=image.filename),
         ephemeral=False
