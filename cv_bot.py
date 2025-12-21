@@ -11,6 +11,7 @@ import easyocr
 import numpy as np
 
 # Constants
+MAX_CV = 54.6  # Maximum allowed CRIT Value
 MAX_NAME_LENGTH = 8  # Max name length on leaderboard (longest possible for mobile)
 MAX_LEADERBOARD_PLAYERS = 25  # Max players to display on leaderboard (Discord's limit)
 DATA_FILE = "data.json"  # Data file
@@ -103,6 +104,21 @@ def count_artifacts(artifacts, threshold):
 # Calculate CV for an artifact
 def calculate_cv(crit_rate: float, crit_dmg: float):
     return crit_rate * 2 + crit_dmg
+
+def validate_artifact_stats(crit_rate: float, crit_dmg: float) -> (float, float, str):
+    """
+    Validate CRIT Rate and CRIT DMG.
+    Returns sanitized values and an error message if invalid.
+    """
+    # Negative values are invalid
+    if crit_rate < 0 or crit_dmg < 0:
+        return 0, 0, "CRIT Rate and CRIT DMG cannot be negative."
+
+    cv = calculate_cv(crit_rate, crit_dmg)
+    if cv > MAX_CV:
+        return 0, 0, f"CRIT Value cannot exceed {MAX_CV:.1f}. Submitted CV = {cv:.1f}."
+
+    return crit_rate, crit_dmg, None
 
 # Get leaderboard ranks
 def get_leaderboard_ranks():
@@ -265,9 +281,15 @@ async def submit(interaction: discord.Interaction, crit_rate: float, crit_dmg: f
     was_new_user = user_id not in data
     ensure_user(user_id)
 
-    old_rank = get_leaderboard_ranks().get(user_id)
+    # Validate stats
+    crit_rate, crit_dmg, error = validate_artifact_stats(crit_rate, crit_dmg)
+    if error:
+        await interaction.response.send_message(f"Invalid artifact stats: {error}", ephemeral=True)
+        return
 
+    old_rank = get_leaderboard_ranks().get(user_id)
     cv = calculate_cv(crit_rate, crit_dmg)
+
     artifact = {"crit_rate": crit_rate, "crit_dmg": crit_dmg, "cv": cv}
     data[user_id]["artifacts"].append(artifact)
     data[user_id]["max_cv"] = max(data[user_id]["max_cv"], cv)
@@ -386,8 +408,13 @@ async def modify(interaction: discord.Interaction, user_identifier: str, artifac
         )
         return
 
-    old_rank = get_leaderboard_ranks().get(target_user_id)
+    # Validate new stats
+    crit_rate, crit_dmg, error = validate_artifact_stats(crit_rate, crit_dmg)
+    if error:
+        await interaction.response.send_message(f"Cannot modify artifact: {error}", ephemeral=True)
+        return
 
+    old_rank = get_leaderboard_ranks().get(target_user_id)
     artifact = artifacts[artifact_index - 1]
     old_cv, old_cr, old_cd = artifact["cv"], artifact["crit_rate"], artifact["crit_dmg"]
 
@@ -397,7 +424,6 @@ async def modify(interaction: discord.Interaction, user_identifier: str, artifac
 
     new_rank = get_leaderboard_ranks().get(target_user_id)
     rank_msg = build_rank_message(old_rank, new_rank)
-
     target_member = interaction.guild.get_member(int(target_user_id))
     display_name = get_display_name(target_user_id, fallback_user=target_member)
 
@@ -429,16 +455,21 @@ async def scan(interaction: discord.Interaction, image: discord.Attachment):
         await interaction.followup.send(f"OCR failed to process the image.\nError: {str(e)}", ephemeral=True)
         return
 
-    # Parse text using the new parser
     crit_rate, crit_dmg, circlet_detected = parse_artifact_text(ocr_text)
 
     if circlet_detected:
         await interaction.followup.send("Circlets are not allowed, sorry!", ephemeral=True)
         return
 
-    if crit_rate == 0 and crit_dmg == 0:
-        await interaction.followup.send("No valid artifact stats detected in the image.", ephemeral=True)
-        return
+    # Fallback to 0 if OCR fails
+    crit_rate = crit_rate or 0.0
+    crit_dmg = crit_dmg or 0.0
+
+    # Validate stats
+    crit_rate, crit_dmg, error = validate_artifact_stats(crit_rate, crit_dmg)
+    if error:
+        # For scan, just fallback to 0 if invalid
+        crit_rate = crit_dmg = 0.0
 
     cv = calculate_cv(crit_rate, crit_dmg)
     artifact = {"crit_rate": crit_rate, "crit_dmg": crit_dmg, "cv": cv}
@@ -450,7 +481,6 @@ async def scan(interaction: discord.Interaction, image: discord.Attachment):
     new_rank = get_leaderboard_ranks().get(user_id)
     rank_msg = build_rank_message(old_rank, new_rank, was_new_user)
 
-    # Build embed for scan result
     embed = Embed(title="Artifact Scan Result", color=0x1abc9c)
     embed.description = f"**Rank:** {rank_msg}"
     embed.add_field(name="CRIT Rate", value=f"{crit_rate:.1f}%", inline=True)
