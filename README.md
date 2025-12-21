@@ -10,7 +10,7 @@ A Discord bot that allows users to submit and track Genshin Impact artifact stat
 >
 > * All **base commands** are **slash commands** (e.g., `/submit`).
 > * Everything in `[ ]` is a **literal**.
-> * Everything in `< >` is a **non-literal argument** (something you provide, like a number or image).
+> * Everything in `< >` is a **non-literal argument**.
 
 ---
 
@@ -36,9 +36,11 @@ Manually submit an artifact.
 * `crit_rate` and `crit_dmg` are **percent values** (e.g., 31.1).
 * CV is automatically calculated:
 
-  ```
-  CV = CRIT Rate * 2 + CRIT DMG
-  ```
+```
+
+CV = CRIT Rate * 2 + CRIT DMG
+
+````
 * Circlets **cannot** be submitted.
 
 ---
@@ -47,27 +49,45 @@ Manually submit an artifact.
 
 Scan an artifact screenshot and automatically extract CRIT Rate & CRIT DMG using OCR.
 
-* Supports multiple languages (based on `languages.json`), including English, French, and Simplified Chinese.
+* Supports multiple languages (based on `languages.json`), including English and Simplified Chinese.
 * Circlets are automatically rejected.
+* If a stat is missing in the screenshot, it is assumed to be `0`.
 * Fails gracefully if no valid stats are detected.
+* **Note:** EasyOCR works faster with a GPU. If no GPU is available, scans may take longer.
+* New languages can be added dynamically by adding a key to `languages.json` with the fields:
+
+* `crit_rate`
+* `crit_dmg`
+* `circlet`
+
+Example:
+
+```json
+"ch_sim": {
+  "crit_rate": ["暴击率"],
+  "crit_dmg": ["暴击伤害"],
+  "circlet": ["理之冠"]
+}
+````
 
 ---
 
-### `/list [user_identifier]`
+### `/list <user_identifier>`
 
 Lists all artifacts for a user.
 
 * If no user is specified, lists your artifacts.
-* Displays **CRIT Rate, CRIT DMG, CV**, and artifact index.
+* Displays **CRIT Rate, CRIT DMG, CRIT Value**, and artifact index.
 
 ---
 
-### `/remove <user_identifier> [artifact_index]`
+### `/remove <user_identifier> <artifact_index>`
 
 Remove a user or a specific artifact.
 
 * If `artifact_index` is omitted, removes all artifacts and the user from the leaderboard.
 * Otherwise, removes the specified artifact.
+* Ranks are automatically updated after removal.
 
 ---
 
@@ -75,8 +95,8 @@ Remove a user or a specific artifact.
 
 Modify an existing artifact.
 
-* Updates CRIT Rate, CRIT DMG, and recalculates CV.
-* Can adjust rank automatically based on the new values.
+* Updates CRIT Rate, CRIT DMG, and recalculates CRIT Value.
+* Ranks are automatically updated based on the new values.
 
 ---
 
@@ -84,7 +104,7 @@ Modify an existing artifact.
 
 Displays the top artifacts by CRIT Value.
 
-* Shows **max CV**, number of artifacts ≥ 45 CV, and number ≥ 40 CV.
+* Shows **max CRIT Value**, number of artifacts ≥ 45 CRIT Value, and number ≥ 40 CRIT Value.
 * Maximum of 25 users displayed.
 * Names truncated to **8 characters** for mobile readability.
 
@@ -92,9 +112,9 @@ Displays the top artifacts by CRIT Value.
 
 ## Artifact Rules
 
-* Only **CRIT Rate** and **CRIT DMG** are considered for CV.
+* Only **CRIT Rate** and **CRIT DMG** are considered for CRIT Value.
 * Circlets are **not allowed**.
-* CV is automatically calculated for all submissions.
+* CRIT Value is automatically calculated for all submissions.
 * Values are stored persistently in `data.json`.
 
 ---
@@ -102,35 +122,32 @@ Displays the top artifacts by CRIT Value.
 ## OCR & Multilingual Support
 
 * Uses **EasyOCR** for artifact screenshot scanning.
+
 * Automatically loads languages from `languages.json`.
+
 * Chinese OCR (`ch_sim` or `ch_tra`) **requires English** to be included.
-* New languages can be added by adding a new key in `languages.json` with the following fields:
+
+* New languages can be added dynamically by adding a new key in `languages.json` with the fields:
 
   * `crit_rate`
   * `crit_dmg`
   * `circlet`
 
-Example:
+* The bot assumes **0** for any missing stat in a screenshot.
 
-```json
-"jp": {
-    "crit_rate": ["会心率"],
-    "crit_dmg": ["会心ダメージ"],
-    "circlet": ["冠"]
-}
-```
+* **Note:** EasyOCR works faster with a GPU. Without a GPU, scans may take longer.
 
 ---
 
 ## Example Usage
 
 ```plaintext
-/name Diluc
+/name jyov
 /submit 31.1 62.2
 /scan artifact_screenshot.png
 /list
-/modify Diluc 1 33.0 65.0
-/remove Diluc 1
+/modify jyov 1 33.0 65.0
+/remove jyov 1
 /leaderboard
 /help
 ```
