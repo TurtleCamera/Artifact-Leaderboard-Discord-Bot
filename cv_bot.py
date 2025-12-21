@@ -1,8 +1,16 @@
+from PIL import Image
+import io
+import re
 import discord
 from discord.ext import commands
 from discord import app_commands
 import json
 import os
+import easyocr
+import numpy as np
+
+# Initialize EasyOCR once
+ocr_reader = easyocr.Reader(['en', 'fr'])  # English + French
 
 # Constants
 MAX_NAME_LENGTH = 7  # Max name length on leaderboard (longest possible for mobile)
@@ -352,6 +360,107 @@ async def modify(interaction: discord.Interaction, user_identifier: str, artifac
         f"CV: {old_cv:.2f} → {artifact['cv']:.2f}\n"
         f"Leaderboard change: {rank_msg}",
         ephemeral=True
+    )
+    
+# /scan command
+@bot.tree.command(name="scan", description="Scan an artifact screenshot")
+@app_commands.describe(image="Upload a screenshot of your artifact")
+async def scan(interaction: discord.Interaction, image: discord.Attachment):
+    import io, re
+    from PIL import Image
+    import numpy as np
+
+    await interaction.response.defer()  # Allow processing time
+
+    try:
+        # Download the image bytes and convert to NumPy array
+        image_bytes = await image.read()
+        img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+        img_np = np.array(img)
+
+        # Run OCR
+        ocr_results = ocr_reader.readtext(img_np)
+        ocr_text = "\n".join([text for _, text, _ in ocr_results])
+    except Exception as e:
+        await interaction.followup.send(
+            f"OCR failed to process the image.\nError: {str(e)}",
+            ephemeral=True
+        )
+        return
+
+    # Detect circlets
+    if any(word.lower() in ocr_text.lower() for word in ["circlet", "diadème"]):
+        await interaction.followup.send(
+            "Circlets are not allowed, sorry!",
+            ephemeral=True
+        )
+        return
+
+    # Extract CRIT Rate and CRIT DMG using regex
+    crit_rate = crit_dmg = None
+    for line in ocr_text.splitlines():
+        line_clean = line.lower().replace("%", "").strip()
+        numbers = re.findall(r"\d+\.?\d*", line_clean)
+        if not numbers:
+            continue
+
+        if "dgt crit" in line_clean or "crit dmg" in line_clean:
+            crit_dmg = float(numbers[-1])
+        elif "taux crit" in line_clean or "crit rate" in line_clean:
+            crit_rate = float(numbers[-1])
+
+    if crit_rate is None or crit_dmg is None:
+        await interaction.followup.send(
+            "Could not detect CRIT Rate and CRIT DMG in the screenshot.",
+            ephemeral=True
+        )
+        return
+
+    # Calculate CV
+    cv = crit_rate * 2 + crit_dmg
+
+    # Temporarily calculate rank change
+    user_id = str(interaction.user.id)
+    if user_id not in data:
+        data[user_id] = {"display_name": None, "artifacts": [], "max_cv": 0}
+
+    ranks_before = get_leaderboard_ranks()
+    old_rank = ranks_before.get(user_id)
+
+    # Temporarily add artifact
+    temp_artifact = {"crit_rate": crit_rate, "crit_dmg": crit_dmg, "cv": cv}
+    data[user_id]["artifacts"].append(temp_artifact)
+    data[user_id]["max_cv"] = max(data[user_id]["max_cv"], cv)
+
+    ranks_after = get_leaderboard_ranks()
+    new_rank = ranks_after.get(user_id, 1)
+
+    # Determine rank change message
+    if old_rank is None:
+        rank_msg = f"Entered leaderboard at rank #{new_rank} <:LumineStonks:840192030918967316>"
+    elif new_rank < old_rank:
+        rank_msg = f"▲ +{old_rank - new_rank} → #{new_rank} <:LumineStonks:840192030918967316>"
+    elif new_rank > old_rank:
+        rank_msg = f"▼ -{new_rank - old_rank} → #{new_rank}"
+    else:
+        rank_msg = f"Unchanged Rank: {new_rank}"
+
+    # Remove temporary artifact
+    data[user_id]["artifacts"].pop()
+    if data[user_id]["artifacts"]:
+        data[user_id]["max_cv"] = max(arti["cv"] for arti in data[user_id]["artifacts"])
+    else:
+        data[user_id]["max_cv"] = 0
+
+    # Send result
+    await interaction.followup.send(
+        f"Scan result:\n"
+        f"CRIT Rate: {crit_rate:.1f}\n"
+        f"CRIT DMG: {crit_dmg:.1f}\n"
+        f"CV: {cv:.2f}\n"
+        f"{rank_msg}\n\n"
+        f"Scan your arti with /scan",
+        ephemeral=False
     )
 
 # /leaderboard command (ASCII, mobile-friendly)
