@@ -71,8 +71,6 @@ chinese_keys = {"ch_sim", "ch_tra"}
 if any(l in chinese_keys for l in ocr_languages) and "en" not in ocr_languages:
     ocr_languages.append("en")  # always include English
 
-print("OCR languages for EasyOCR:", ocr_languages)
-
 # Initialize OCR reader
 ocr_reader = easyocr.Reader(ocr_languages)
 
