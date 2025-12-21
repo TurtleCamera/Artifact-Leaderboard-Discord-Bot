@@ -239,7 +239,9 @@ async def list_artifacts(interaction: discord.Interaction, user_identifier: str 
 async def remove(interaction: discord.Interaction, user_identifier: str, artifact_index: int = None):
     target_user_id = await resolve_user(interaction, user_identifier)
     if not target_user_id or target_user_id not in data:
-        await interaction.response.send_message(f"User '{user_identifier}' not found in the leaderboard.", ephemeral=True)
+        await interaction.response.send_message(
+            f"User '{user_identifier}' not found in the leaderboard.", ephemeral=True
+        )
         return
 
     user_data = data[target_user_id]
@@ -253,9 +255,16 @@ async def remove(interaction: discord.Interaction, user_identifier: str, artifac
             )
             return
 
+        # Capture old rank before removal
+        old_rank = get_leaderboard_ranks().get(target_user_id)
+
         removed = artifacts.pop(artifact_index - 1)
         user_data["max_cv"] = max((arti["cv"] for arti in artifacts), default=0)
         save_data(data)
+
+        # Compute new rank after removal
+        new_rank = get_leaderboard_ranks().get(target_user_id)
+        rank_msg = build_rank_message(old_rank, new_rank)
 
         target_member = interaction.guild.get_member(int(target_user_id))
         display_name = get_display_name(target_user_id, fallback_user=target_member)
@@ -266,20 +275,25 @@ async def remove(interaction: discord.Interaction, user_identifier: str, artifac
             color=0xe74c3c
         )
         embed.description = f"Removed artifact #{artifact_index} for **{display_name}**."
+        embed.add_field(name="Rank", value=rank_msg, inline=False)
+
         await interaction.response.send_message(embed=embed)  # Public message
         return
 
-    # Remove entire user
+    # Removing entire user
+    old_rank = get_leaderboard_ranks().get(target_user_id)
     removed_name = get_display_name(target_user_id, fallback_user=interaction.guild.get_member(int(target_user_id)))
     data.pop(target_user_id)
     save_data(data)
 
-    # Embed for user removal
+    # Since user is removed, we can only report that they are gone
     embed = discord.Embed(
         title="User Removed",
         color=0xe74c3c
     )
     embed.description = f"Removed **{removed_name}** and all of their artifacts from the leaderboard."
+    embed.add_field(name="Previous Rank", value=f"#{old_rank}", inline=False)
+
     await interaction.response.send_message(embed=embed)  # Public message
 
 # /modify command
@@ -304,21 +318,24 @@ async def modify(interaction: discord.Interaction, user_identifier: str, artifac
         )
         return
 
+    # Capture old rank before changes
+    old_rank = get_leaderboard_ranks().get(target_user_id)
+
     artifact = artifacts[artifact_index - 1]
     old_cv, old_cr, old_cd = artifact["cv"], artifact["crit_rate"], artifact["crit_dmg"]
 
+    # Update artifact
     artifact["crit_rate"], artifact["crit_dmg"], artifact["cv"] = crit_rate, crit_dmg, calculate_cv(crit_rate, crit_dmg)
     data[target_user_id]["max_cv"] = max((arti["cv"] for arti in artifacts), default=0)
     save_data(data)
 
-    old_rank = get_leaderboard_ranks().get(target_user_id)
+    # Capture new rank after changes
     new_rank = get_leaderboard_ranks().get(target_user_id)
     rank_msg = build_rank_message(old_rank, new_rank)
 
     target_member = interaction.guild.get_member(int(target_user_id))
     display_name = get_display_name(target_user_id, fallback_user=target_member)
 
-    # Build embed for modification
     embed = discord.Embed(
         title=f"Artifact #{artifact_index} Modified",
         color=0xf1c40f
@@ -329,7 +346,7 @@ async def modify(interaction: discord.Interaction, user_identifier: str, artifac
     embed.add_field(name="CRIT Value", value=f"{old_cv:.1f} → {artifact['cv']:.1f}", inline=True)
     embed.add_field(name="Rank", value=rank_msg, inline=False)
 
-    await interaction.response.send_message(embed=embed)  # Public message
+    await interaction.response.send_message(embed=embed)  # Public
 
 # /scan command
 @bot.tree.command(name="scan", description="Scan an artifact screenshot")
