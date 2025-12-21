@@ -3,7 +3,7 @@ import io
 import re
 import discord
 from discord.ext import commands
-from discord import app_commands
+from discord import app_commands, Embed
 import json
 import os
 import easyocr
@@ -360,14 +360,16 @@ async def scan(interaction: discord.Interaction, image: discord.Attachment):
     new_rank = get_leaderboard_ranks().get(user_id)
     rank_msg = build_rank_message(old_rank, new_rank, was_new_user)
 
+    # Create an embed for the scan result
+    embed = Embed(title="Artifact Scan Result", color=0x1abc9c)
+    embed.description = f"**Rank:** {rank_msg}"
+    embed.add_field(name="CRIT Rate", value=f"{crit_rate:.1f}%", inline=True)
+    embed.add_field(name="CRIT DMG", value=f"{crit_dmg:.1f}%", inline=True)
+    embed.add_field(name="CRIT Value", value=f"{cv:.1f}", inline=True)
+    embed.set_thumbnail(url="attachment://" + image.filename)
+
     await interaction.followup.send(
-        content=(
-            f"Scan result:\n"
-            f"CRIT Rate: {crit_rate:.1f}\n"
-            f"CRIT DMG: {crit_dmg:.1f}\n"
-            f"CRIT Value: {cv:.1f}\n"
-            f"Rank: {rank_msg}"
-        ),
+        embed=embed,
         file=discord.File(fp=io.BytesIO(image_bytes), filename=image.filename),
         ephemeral=False
     )
