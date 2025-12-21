@@ -376,10 +376,19 @@ async def leaderboard(interaction: discord.Interaction):
     lines = ["#  | Name     | Max  | 45+ | 40+", "---+----------+------+-----+----"]
 
     for rank, (user_id, user_data) in enumerate(sorted_leaderboard[:MAX_LEADERBOARD_PLAYERS], start=1):
+        # Try to get the member from guild cache first; fetch from API if not cached
         member = interaction.guild.get_member(int(user_id))
+        if not member:
+            try:
+                member = await bot.fetch_user(int(user_id))
+            except Exception:
+                member = None
+
+        # Use leaderboard display name or Discord username
         name = get_display_name(user_id, fallback_user=member)
         if len(name) > MAX_NAME_LENGTH:
             name = name[:MAX_NAME_LENGTH - 1] + "-"
+
         lines.append(
             f"{rank:<2} | {name.ljust(MAX_NAME_LENGTH)} | {user_data['max_cv']:<4.1f} | "
             f"{count_artifacts(user_data['artifacts'], 45):<3} | {count_artifacts(user_data['artifacts'], 40):<3}"
