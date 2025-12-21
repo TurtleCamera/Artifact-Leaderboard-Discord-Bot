@@ -194,18 +194,29 @@ async def submit(interaction: discord.Interaction, crit_rate: float, crit_dmg: f
 async def list_artifacts(interaction: discord.Interaction, user_identifier: str = None):
     target_user_id = resolve_user(interaction, user_identifier)
 
-    # If user not found
+    # If user not found in the leaderboard
     if not target_user_id or target_user_id not in data:
-        await interaction.response.send_message(
-            f"User '{user_identifier}' not found in the leaderboard.",
-            ephemeral=True
-        )
+        if not user_identifier:
+            # Invoking user is not on the leaderboard
+            await interaction.response.send_message(
+                "You don't have any artifacts on the leaderboard yet.",
+                ephemeral=True
+            )
+        else:
+            # Specified user_identifier not found
+            await interaction.response.send_message(
+                f"User '{user_identifier}' not found in the leaderboard.",
+                ephemeral=True
+            )
         return
 
     # Check if user has artifacts
     user_data = data.get(target_user_id)
     if not user_data or not user_data.get("artifacts"):
-        await interaction.response.send_message("No artifacts found for this user.", ephemeral=True)
+        await interaction.response.send_message(
+            "No artifacts found for this user.",
+            ephemeral=True
+        )
         return
 
     # Build artifact table (zero-based index)
