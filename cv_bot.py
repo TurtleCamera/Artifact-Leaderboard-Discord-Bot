@@ -142,17 +142,24 @@ async def on_ready():
         save_data(data)
         print("Backfilled missing usernames in data.json")
 
-    # Load guild ID
-    with open("guild_id", "r") as f:
-        GUILD_ID = int(f.read().strip())
-    guild = discord.Object(id=GUILD_ID)
-
+    # Try to load guild ID and sync commands, but don't crash if invalid
     try:
+        with open("guild_id", "r") as f:
+            guild_id_str = f.read().strip()
+            GUILD_ID = int(guild_id_str)
+        guild = discord.Object(id=GUILD_ID)
+
         bot.tree.copy_global_to(guild=guild)
         synced = await bot.tree.sync(guild=guild)
         print(f"Synced {len(synced)} command(s) to guild {GUILD_ID}")
+    except FileNotFoundError:
+        print("No guild_id file found. Running bot without guild-specific command syncing.")
+    except ValueError:
+        print(f"Invalid guild_id value: '{guild_id_str}'. Running bot without guild-specific command syncing.")
+    except discord.HTTPException as e:
+        print(f"Guild ID {guild_id_str} does not link to a valid server or failed to sync: {e}")
     except Exception as e:
-        print(f"Error syncing commands: {e}")
+        print(f"Unexpected error during guild sync: {e}")
 
 # ----------------- Commands -----------------
 
