@@ -10,9 +10,6 @@ import os
 import easyocr
 import numpy as np
 
-# Initialize EasyOCR once
-ocr_reader = easyocr.Reader(['en', 'fr'])  # English + French by default
-
 # Constants
 MAX_NAME_LENGTH = 8  # Max name length on leaderboard (longest possible for mobile)
 MAX_LEADERBOARD_PLAYERS = 25  # Max players to display on leaderboard (Discord's limit)
@@ -49,7 +46,7 @@ def load_languages():
     if os.path.exists(LANG_FILE):
         with open(LANG_FILE, "r", encoding="utf-8") as f:
             return json.load(f)
-    # Default English/French if file missing
+    # Default languages if file missing
     return {
         "en": {
             "crit_rate": ["crit rate"],
@@ -63,7 +60,21 @@ def load_languages():
         }
     }
 
-languages = load_languages()
+# Load language mappings
+languages = load_languages()  # your JSON loader
+
+# Build OCR language list directly from JSON keys
+ocr_languages = list(languages.keys())
+
+# EasyOCR requires English whenever Chinese is included
+chinese_keys = {"ch_sim", "ch_tra"}
+if any(l in chinese_keys for l in ocr_languages) and "en" not in ocr_languages:
+    ocr_languages.append("en")  # always include English
+
+print("OCR languages for EasyOCR:", ocr_languages)
+
+# Initialize OCR reader
+ocr_reader = easyocr.Reader(ocr_languages)
 
 # ----------------- Helper Functions -----------------
 
