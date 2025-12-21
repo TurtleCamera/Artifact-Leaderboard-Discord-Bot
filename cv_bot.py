@@ -131,7 +131,7 @@ async def name(interaction: discord.Interaction, new_name: str):
     user_id = str(interaction.user.id)
     ensure_user(user_id)
     data[user_id]["display_name"] = new_name
-    save_data(data)
+    save_data(data)  # Save after update
     await interaction.response.send_message(
         f"Your leaderboard name is now set to: **{new_name}**",
         ephemeral=True
@@ -151,7 +151,7 @@ async def submit(interaction: discord.Interaction, crit_rate: float, crit_dmg: f
     artifact = {"crit_rate": crit_rate, "crit_dmg": crit_dmg, "cv": cv}
     data[user_id]["artifacts"].append(artifact)
     data[user_id]["max_cv"] = max(data[user_id]["max_cv"], cv)
-    save_data(data)
+    save_data(data)  # Save after addition
 
     new_rank = get_leaderboard_ranks().get(user_id)
     rank_msg = build_rank_message(old_rank, new_rank, was_new_user)
@@ -189,8 +189,7 @@ async def list_artifacts(interaction: discord.Interaction, user_identifier: str 
         "Index | CR    | CD    | CV    ",
         "------+-------+-------+-------"
     ]
-    # Start enumeration at 1
-    for idx, arti in enumerate(user_data["artifacts"], start=1):
+    for idx, arti in enumerate(user_data["artifacts"], start=1):  # 1-based indexing
         lines.append(f"{idx:<5} | {arti['crit_rate']:<5.1f} | {arti['crit_dmg']:<5.1f} | {arti['cv']:<5.2f}")
 
     artifact_text = "\n".join(lines)
@@ -222,7 +221,7 @@ async def remove(interaction: discord.Interaction, user_identifier: str, artifac
 
         removed = artifacts.pop(artifact_index - 1)
         user_data["max_cv"] = max((arti["cv"] for arti in artifacts), default=0)
-        save_data(data)
+        save_data(data)  # Save after artifact removal
         await interaction.response.send_message(
             f"Removed artifact #{artifact_index} for **{get_display_name(target_user_id, interaction.user)}**.",
             ephemeral=True
@@ -231,7 +230,7 @@ async def remove(interaction: discord.Interaction, user_identifier: str, artifac
 
     removed_name = get_display_name(target_user_id, interaction.user)
     data.pop(target_user_id)
-    save_data(data)
+    save_data(data)  # Save after user removal
     await interaction.response.send_message(f"Removed **{removed_name}** and all their artifacts from the leaderboard.", ephemeral=True)
 
 # /modify command
@@ -260,7 +259,7 @@ async def modify(interaction: discord.Interaction, user_identifier: str, artifac
     old_cv, old_cr, old_cd = artifact["cv"], artifact["crit_rate"], artifact["crit_dmg"]
     artifact["crit_rate"], artifact["crit_dmg"], artifact["cv"] = crit_rate, crit_dmg, calculate_cv(crit_rate, crit_dmg)
     data[target_user_id]["max_cv"] = max((arti["cv"] for arti in artifacts), default=0)
-    save_data(data)
+    save_data(data)  # Save after modification
 
     old_rank = get_leaderboard_ranks().get(target_user_id)
     new_rank = get_leaderboard_ranks().get(target_user_id)
@@ -285,50 +284,75 @@ async def scan(interaction: discord.Interaction, image: discord.Attachment):
     ensure_user(user_id)
 
     try:
+        # Download the image and convert to NumPy array
         image_bytes = await image.read()
         img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
         img_np = np.array(img)
+
+        # Run OCR
         ocr_results = ocr_reader.readtext(img_np)
         ocr_text = "\n".join([text for _, text, _ in ocr_results])
     except Exception as e:
-        await interaction.followup.send(f"OCR failed to process the image.\nError: {str(e)}", ephemeral=True)
+        await interaction.followup.send(
+            f"OCR failed to process the image.\nError: {str(e)}",
+            ephemeral=True
+        )
         return
 
+    # Detect circlets
     if any(word.lower() in ocr_text.lower() for word in ["circlet", "diadème"]):
-        await interaction.followup.send("Circlets are not allowed, sorry!", ephemeral=True)
+        await interaction.followup.send(
+            "Circlets are not allowed, sorry!",
+            ephemeral=True
+        )
         return
 
+    # Extract CRIT Rate and CRIT DMG using regex
     crit_rate = crit_dmg = None
     for line in ocr_text.splitlines():
         line_clean = line.lower().replace("%", "").strip()
         numbers = re.findall(r"\d+[.,]?\d*", line_clean)
         if not numbers:
             continue
-        value = float(numbers[-1].replace(',', '.'))
+        try:
+            value = float(numbers[-1].replace(',', '.'))
+        except ValueError:
+            continue
+
         if "dgt crit" in line_clean or "crit dmg" in line_clean:
             crit_dmg = value
         elif "taux crit" in line_clean or "crit rate" in line_clean:
             crit_rate = value
 
     if crit_rate is None or crit_dmg is None:
-        await interaction.followup.send("Could not detect CRIT Rate and CRIT DMG in the screenshot.", ephemeral=True)
+        await interaction.followup.send(
+            "Could not detect CRIT Rate and CRIT DMG in the screenshot.",
+            ephemeral=True
+        )
         return
 
+    # Calculate CV
     cv = calculate_cv(crit_rate, crit_dmg)
 
-    temp_artifact = {"crit_rate": crit_rate, "crit_dmg": crit_dmg, "cv": cv}
-    data[user_id]["artifacts"].append(temp_artifact)
+    # Permanently add artifact
+    artifact = {"crit_rate": crit_rate, "crit_dmg": crit_dmg, "cv": cv}
+    data[user_id]["artifacts"].append(artifact)
     data[user_id]["max_cv"] = max(data[user_id]["max_cv"], cv)
+    save_data(data)  # Save permanently
 
+    # Calculate leaderboard ranks
     old_rank = get_leaderboard_ranks().get(user_id)
-    new_rank = get_leaderboard_ranks().get(user_id, 1)
+    new_rank = get_leaderboard_ranks().get(user_id)
     rank_msg = build_rank_message(old_rank, new_rank, was_new_user)
 
-    data[user_id]["artifacts"].pop()
-    data[user_id]["max_cv"] = max((arti["cv"] for arti in data[user_id]["artifacts"]), default=0)
-
+    # Send scan result
     await interaction.followup.send(
-        f"Scan result:\nCRIT Rate: {crit_rate:.1f}\nCRIT DMG: {crit_dmg:.1f}\nCV: {cv:.2f}\n{rank_msg}\n\nScan your artifact with /scan",
+        f"Scan result:\n"
+        f"CRIT Rate: {crit_rate:.1f}\n"
+        f"CRIT DMG: {crit_dmg:.1f}\n"
+        f"CV: {cv:.2f}\n"
+        f"{rank_msg}\n\n"
+        f"Scan artifacts using /scan",
         ephemeral=False
     )
 
