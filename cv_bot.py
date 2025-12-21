@@ -41,7 +41,6 @@ def save_data(data):
 
 data = load_data()
 
-
 # ----------------- Helper Functions -----------------
 
 # Initialize user if not exist
@@ -105,7 +104,6 @@ def build_rank_message(old_rank, new_rank, is_new_user=False):
         return f"▼ -{new_rank - old_rank} → #{new_rank}"
     return f"▬ Unchanged (#{new_rank})"
 
-
 # ----------------- Events -----------------
 
 @bot.event
@@ -123,7 +121,6 @@ async def on_ready():
         print(f"Synced {len(synced)} command(s) to guild {GUILD_ID}")
     except Exception as e:
         print(f"Error syncing commands: {e}")
-
 
 # ----------------- Commands -----------------
 
@@ -148,21 +145,17 @@ async def submit(interaction: discord.Interaction, crit_rate: float, crit_dmg: f
     was_new_user = user_id not in data
     ensure_user(user_id)
 
-    # Rank before submission
     old_rank = get_leaderboard_ranks().get(user_id)
 
-    # Store artifact
     cv = calculate_cv(crit_rate, crit_dmg)
     artifact = {"crit_rate": crit_rate, "crit_dmg": crit_dmg, "cv": cv}
     data[user_id]["artifacts"].append(artifact)
     data[user_id]["max_cv"] = max(data[user_id]["max_cv"], cv)
     save_data(data)
 
-    # Rank after submission
     new_rank = get_leaderboard_ranks().get(user_id)
     rank_msg = build_rank_message(old_rank, new_rank, was_new_user)
 
-    # Send publicly via webhook
     channel = interaction.channel
     webhook = await channel.create_webhook(name="ArtiBotTempWebhook")
     await webhook.send(
@@ -196,7 +189,8 @@ async def list_artifacts(interaction: discord.Interaction, user_identifier: str 
         "Index | CR    | CD    | CV    ",
         "------+-------+-------+-------"
     ]
-    for idx, arti in enumerate(user_data["artifacts"]):
+    # Start enumeration at 1
+    for idx, arti in enumerate(user_data["artifacts"], start=1):
         lines.append(f"{idx:<5} | {arti['crit_rate']:<5.1f} | {arti['crit_dmg']:<5.1f} | {arti['cv']:<5.2f}")
 
     artifact_text = "\n".join(lines)
@@ -207,7 +201,7 @@ async def list_artifacts(interaction: discord.Interaction, user_identifier: str 
 @bot.tree.command(name="remove", description="Remove a user or a specific artifact")
 @app_commands.describe(
     user_identifier="Leaderboard name or Discord username",
-    artifact_index="Optional: index of artifact to remove (0-based). Leave empty to remove the whole user"
+    artifact_index="Optional: index of artifact to remove (1-based). Leave empty to remove the whole user"
 )
 async def remove(interaction: discord.Interaction, user_identifier: str, artifact_index: int = None):
     target_user_id = resolve_user(interaction, user_identifier)
@@ -217,20 +211,24 @@ async def remove(interaction: discord.Interaction, user_identifier: str, artifac
 
     user_data = data[target_user_id]
 
-    # Remove specific artifact
     if artifact_index is not None:
         artifacts = user_data.get("artifacts", [])
-        if artifact_index < 0 or artifact_index >= len(artifacts):
-            await interaction.response.send_message(f"Invalid artifact index. Please provide a number between 0 and {len(artifacts)-1}.", ephemeral=True)
+        if artifact_index < 1 or artifact_index > len(artifacts):
+            await interaction.response.send_message(
+                f"Invalid artifact index. Please provide a number between 1 and {len(artifacts)}.",
+                ephemeral=True
+            )
             return
 
-        removed = artifacts.pop(artifact_index)
+        removed = artifacts.pop(artifact_index - 1)
         user_data["max_cv"] = max((arti["cv"] for arti in artifacts), default=0)
         save_data(data)
-        await interaction.response.send_message(f"Removed artifact #{artifact_index} for **{get_display_name(target_user_id, interaction.user)}**.", ephemeral=True)
+        await interaction.response.send_message(
+            f"Removed artifact #{artifact_index} for **{get_display_name(target_user_id, interaction.user)}**.",
+            ephemeral=True
+        )
         return
 
-    # Remove entire user
     removed_name = get_display_name(target_user_id, interaction.user)
     data.pop(target_user_id)
     save_data(data)
@@ -240,7 +238,7 @@ async def remove(interaction: discord.Interaction, user_identifier: str, artifac
 @bot.tree.command(name="modify", description="Modify an existing artifact")
 @app_commands.describe(
     user_identifier="Leaderboard name or Discord username",
-    artifact_index="Index of the artifact to modify (0-based)",
+    artifact_index="Index of the artifact to modify (1-based)",
     crit_rate="New CRIT Rate value",
     crit_dmg="New CRIT DMG value"
 )
@@ -251,11 +249,14 @@ async def modify(interaction: discord.Interaction, user_identifier: str, artifac
         return
 
     artifacts = data[target_user_id]["artifacts"]
-    if artifact_index < 0 or artifact_index >= len(artifacts):
-        await interaction.response.send_message(f"Invalid artifact index. Please provide a number between 0 and {len(artifacts)-1}.", ephemeral=True)
+    if artifact_index < 1 or artifact_index > len(artifacts):
+        await interaction.response.send_message(
+            f"Invalid artifact index. Please provide a number between 1 and {len(artifacts)}.",
+            ephemeral=True
+        )
         return
 
-    artifact = artifacts[artifact_index]
+    artifact = artifacts[artifact_index - 1]
     old_cv, old_cr, old_cd = artifact["cv"], artifact["crit_rate"], artifact["crit_dmg"]
     artifact["crit_rate"], artifact["crit_dmg"], artifact["cv"] = crit_rate, crit_dmg, calculate_cv(crit_rate, crit_dmg)
     data[target_user_id]["max_cv"] = max((arti["cv"] for arti in artifacts), default=0)
@@ -315,7 +316,6 @@ async def scan(interaction: discord.Interaction, image: discord.Attachment):
 
     cv = calculate_cv(crit_rate, crit_dmg)
 
-    # Temporarily add artifact for rank calculation
     temp_artifact = {"crit_rate": crit_rate, "crit_dmg": crit_dmg, "cv": cv}
     data[user_id]["artifacts"].append(temp_artifact)
     data[user_id]["max_cv"] = max(data[user_id]["max_cv"], cv)
@@ -324,7 +324,6 @@ async def scan(interaction: discord.Interaction, image: discord.Attachment):
     new_rank = get_leaderboard_ranks().get(user_id, 1)
     rank_msg = build_rank_message(old_rank, new_rank, was_new_user)
 
-    # Remove temporary artifact
     data[user_id]["artifacts"].pop()
     data[user_id]["max_cv"] = max((arti["cv"] for arti in data[user_id]["artifacts"]), default=0)
 
