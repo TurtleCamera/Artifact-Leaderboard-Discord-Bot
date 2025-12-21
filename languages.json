@@ -1,0 +1,12 @@
+{
+    "en": {
+        "crit_rate": ["crit rate"],
+        "crit_dmg": ["crit dmg"],
+        "circlet": ["circlet"]
+    },
+    "fr": {
+        "crit_rate": ["taux crit"],
+        "crit_dmg": ["dgt crit"],
+        "circlet": ["diadème"]
+    }
+}

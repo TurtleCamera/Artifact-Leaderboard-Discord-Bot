@@ -1,5 +1,6 @@
 from PIL import Image
 import io
+import unicodedata
 import re
 import discord
 from discord.ext import commands
@@ -10,12 +11,13 @@ import easyocr
 import numpy as np
 
 # Initialize EasyOCR once
-ocr_reader = easyocr.Reader(['en', 'fr'])  # English + French
+ocr_reader = easyocr.Reader(['en', 'fr'])  # English + French by default
 
 # Constants
 MAX_NAME_LENGTH = 8  # Max name length on leaderboard (longest possible for mobile)
 MAX_LEADERBOARD_PLAYERS = 25  # Max players to display on leaderboard (Discord's limit)
 DATA_FILE = "data.json"  # Data file
+LANG_FILE = "languages.json"  # Multilingual mapping
 
 # Setup intents
 intents = discord.Intents.default()
@@ -41,6 +43,27 @@ def save_data(data):
         json.dump(data, f, indent=4)
 
 data = load_data()
+
+# Load language mappings
+def load_languages():
+    if os.path.exists(LANG_FILE):
+        with open(LANG_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    # Default English/French if file missing
+    return {
+        "en": {
+            "crit_rate": ["crit rate"],
+            "crit_dmg": ["crit dmg"],
+            "circlet": ["circlet"]
+        },
+        "fr": {
+            "crit_rate": ["taux crit"],
+            "crit_dmg": ["dgt crit"],
+            "circlet": ["diadème"]
+        }
+    }
+
+languages = load_languages()
 
 # ----------------- Helper Functions -----------------
 
@@ -120,6 +143,55 @@ def build_rank_message(old_rank, new_rank, is_new_user=False):
         return f"▼ -{new_rank - old_rank} → #{new_rank}"
     return f"▬ Unchanged (#{new_rank})"
 
+# Normalize text (usually used for circlet detection)
+def normalize_text(text: str) -> str:
+    """
+    Lowercase and remove accents/diacritics for consistent matching.
+    """
+    text = text.lower()
+    text = unicodedata.normalize('NFD', text)
+    text = ''.join(c for c in text if unicodedata.category(c) != 'Mn')
+    return text
+
+# Parse artifact text for all languages in languages.json
+def parse_artifact_text(ocr_text: str):
+    crit_rate = crit_dmg = 0.0
+
+    # Split OCR text into lines and normalize
+    lines = [normalize_text(line.replace("%", "").strip()) for line in ocr_text.splitlines()]
+
+    # Prepare normalized circlet keywords once
+    circlet_keywords_all = set()
+    crit_rate_keywords_all = set()
+    crit_dmg_keywords_all = set()
+    for lang_map in languages.values():
+        circlet_keywords_all.update(normalize_text(k) for k in lang_map.get("circlet", []))
+        crit_rate_keywords_all.update(normalize_text(k) for k in lang_map.get("crit_rate", []))
+        crit_dmg_keywords_all.update(normalize_text(k) for k in lang_map.get("crit_dmg", []))
+
+    for line_clean in lines:
+        # First, check if this line is a circlet
+        if any(word in line_clean for word in circlet_keywords_all):
+            return None, None, True  # Circlet detected, stop immediately
+
+        # Extract numeric values if not circlet
+        numbers = re.findall(r"\d+[.,]?\d*", line_clean)
+        if not numbers:
+            continue
+        try:
+            value = float(numbers[-1].replace(",", "."))
+        except ValueError:
+            continue
+
+        # Check for CRIT DMG
+        if any(word in line_clean for word in crit_dmg_keywords_all):
+            crit_dmg = value
+        # Check for CRIT Rate
+        if any(word in line_clean for word in crit_rate_keywords_all):
+            crit_rate = value
+
+    return crit_rate, crit_dmg, False
+
 # ----------------- Events -----------------
 
 @bot.event
@@ -163,7 +235,7 @@ async def on_ready():
 
 # ----------------- Commands -----------------
 
-# /name command
+# /name
 @bot.tree.command(name="name", description="Change your display name on the leaderboard")
 @app_commands.describe(new_name="The name you want to display on the leaderboard")
 async def name(interaction: discord.Interaction, new_name: str):
@@ -176,7 +248,7 @@ async def name(interaction: discord.Interaction, new_name: str):
         ephemeral=True
     )
 
-# /submit command
+# /submit
 @bot.tree.command(name="submit", description="Submit an artifact (CRIT Rate & CRIT DMG)")
 @app_commands.describe(crit_rate="CRIT Rate of artifact", crit_dmg="CRIT DMG of artifact")
 async def submit(interaction: discord.Interaction, crit_rate: float, crit_dmg: float):
@@ -186,22 +258,16 @@ async def submit(interaction: discord.Interaction, crit_rate: float, crit_dmg: f
 
     old_rank = get_leaderboard_ranks().get(user_id)
 
-    # Calculate CV and add artifact
     cv = calculate_cv(crit_rate, crit_dmg)
     artifact = {"crit_rate": crit_rate, "crit_dmg": crit_dmg, "cv": cv}
     data[user_id]["artifacts"].append(artifact)
     data[user_id]["max_cv"] = max(data[user_id]["max_cv"], cv)
     save_data(data)
 
-    # Calculate new rank
     new_rank = get_leaderboard_ranks().get(user_id)
     rank_msg = build_rank_message(old_rank, new_rank, was_new_user)
 
-    # Build embed
-    embed = Embed(
-        title="Artifact Submitted",
-        color=0x1abc9c
-    )
+    embed = Embed(title="Artifact Submitted", color=0x1abc9c)
     embed.add_field(name="CRIT Rate", value=f"{crit_rate:.1f}%", inline=True)
     embed.add_field(name="CRIT DMG", value=f"{crit_dmg:.1f}%", inline=True)
     embed.add_field(name="CRIT Value", value=f"{cv:.1f}", inline=True)
@@ -210,7 +276,7 @@ async def submit(interaction: discord.Interaction, crit_rate: float, crit_dmg: f
 
     await interaction.response.send_message(embed=embed)
 
-# /list command
+# /list
 @bot.tree.command(name="list", description="List all artifacts for a user")
 @app_commands.describe(user_identifier="Optional: leaderboard name or Discord username")
 async def list_artifacts(interaction: discord.Interaction, user_identifier: str = None):
@@ -225,10 +291,7 @@ async def list_artifacts(interaction: discord.Interaction, user_identifier: str 
         await interaction.response.send_message("No artifacts found for this user.", ephemeral=True)
         return
 
-    lines = [
-        "Index | CR   | CD   | CV   ",
-        "------+------+------+-----"
-    ]
+    lines = ["Index | CR   | CD   | CV   ", "------+------+------+-----"]
     for idx, arti in enumerate(user_data["artifacts"], start=1):
         lines.append(f"{idx:<5} | {arti['crit_rate']:<4.1f} | {arti['crit_dmg']:<4.1f} | {arti['cv']:<4.1f}")
 
@@ -237,7 +300,7 @@ async def list_artifacts(interaction: discord.Interaction, user_identifier: str 
     display_name = get_display_name(target_user_id, fallback_user=target_member)
     await interaction.response.send_message(f"Artifacts for **{display_name}**:\n```\n{artifact_text}\n```", ephemeral=True)
 
-# /remove command
+# /remove
 @bot.tree.command(name="remove", description="Remove a user or a specific artifact")
 @app_commands.describe(
     user_identifier="Leaderboard name or Discord username",
@@ -262,48 +325,37 @@ async def remove(interaction: discord.Interaction, user_identifier: str, artifac
             )
             return
 
-        # Capture old rank before removal
         old_rank = get_leaderboard_ranks().get(target_user_id)
 
         removed = artifacts.pop(artifact_index - 1)
         user_data["max_cv"] = max((arti["cv"] for arti in artifacts), default=0)
         save_data(data)
 
-        # Compute new rank after removal
         new_rank = get_leaderboard_ranks().get(target_user_id)
         rank_msg = build_rank_message(old_rank, new_rank)
 
         target_member = interaction.guild.get_member(int(target_user_id))
         display_name = get_display_name(target_user_id, fallback_user=target_member)
 
-        # Embed for artifact removal
-        embed = discord.Embed(
-            title="Artifact Removed",
-            color=0xe74c3c
-        )
+        embed = discord.Embed(title="Artifact Removed", color=0xe74c3c)
         embed.description = f"Removed artifact #{artifact_index} for **{display_name}**."
         embed.add_field(name="Rank", value=rank_msg, inline=False)
 
-        await interaction.response.send_message(embed=embed)  # Public message
+        await interaction.response.send_message(embed=embed)
         return
 
-    # Removing entire user
     old_rank = get_leaderboard_ranks().get(target_user_id)
     removed_name = get_display_name(target_user_id, fallback_user=interaction.guild.get_member(int(target_user_id)))
     data.pop(target_user_id)
     save_data(data)
 
-    # Since user is removed, we can only report that they are gone
-    embed = discord.Embed(
-        title="User Removed",
-        color=0xe74c3c
-    )
+    embed = discord.Embed(title="User Removed", color=0xe74c3c)
     embed.description = f"Removed **{removed_name}** and all of their artifacts from the leaderboard."
     embed.add_field(name="Previous Rank", value=f"#{old_rank}", inline=False)
 
-    await interaction.response.send_message(embed=embed)  # Public message
+    await interaction.response.send_message(embed=embed)
 
-# /modify command
+# /modify
 @bot.tree.command(name="modify", description="Modify an existing artifact")
 @app_commands.describe(
     user_identifier="Leaderboard name or Discord username",
@@ -325,35 +377,29 @@ async def modify(interaction: discord.Interaction, user_identifier: str, artifac
         )
         return
 
-    # Capture old rank before changes
     old_rank = get_leaderboard_ranks().get(target_user_id)
 
     artifact = artifacts[artifact_index - 1]
     old_cv, old_cr, old_cd = artifact["cv"], artifact["crit_rate"], artifact["crit_dmg"]
 
-    # Update artifact
     artifact["crit_rate"], artifact["crit_dmg"], artifact["cv"] = crit_rate, crit_dmg, calculate_cv(crit_rate, crit_dmg)
     data[target_user_id]["max_cv"] = max((arti["cv"] for arti in artifacts), default=0)
     save_data(data)
 
-    # Capture new rank after changes
     new_rank = get_leaderboard_ranks().get(target_user_id)
     rank_msg = build_rank_message(old_rank, new_rank)
 
     target_member = interaction.guild.get_member(int(target_user_id))
     display_name = get_display_name(target_user_id, fallback_user=target_member)
 
-    embed = discord.Embed(
-        title=f"Artifact #{artifact_index} Modified",
-        color=0xf1c40f
-    )
+    embed = discord.Embed(title=f"Artifact #{artifact_index} Modified", color=0xf1c40f)
     embed.set_author(name=display_name)
     embed.add_field(name="CRIT Rate", value=f"{old_cr:.1f} → {crit_rate:.1f}%", inline=True)
     embed.add_field(name="CRIT DMG", value=f"{old_cd:.1f} → {crit_dmg:.1f}%", inline=True)
     embed.add_field(name="CRIT Value", value=f"{old_cv:.1f} → {artifact['cv']:.1f}", inline=True)
     embed.add_field(name="Rank", value=rank_msg, inline=False)
 
-    await interaction.response.send_message(embed=embed)  # Public
+    await interaction.response.send_message(embed=embed)
 
 # /scan command
 @bot.tree.command(name="scan", description="Scan an artifact screenshot")
@@ -374,24 +420,16 @@ async def scan(interaction: discord.Interaction, image: discord.Attachment):
         await interaction.followup.send(f"OCR failed to process the image.\nError: {str(e)}", ephemeral=True)
         return
 
-    if any(word.lower() in ocr_text.lower() for word in ["circlet", "diadème"]):
+    # Parse text using the new parser
+    crit_rate, crit_dmg, circlet_detected = parse_artifact_text(ocr_text)
+
+    if circlet_detected:
         await interaction.followup.send("Circlets are not allowed, sorry!", ephemeral=True)
         return
 
-    crit_rate = crit_dmg = 0.0
-    for line in ocr_text.splitlines():
-        line_clean = line.lower().replace("%", "").strip()
-        numbers = re.findall(r"\d+[.,]?\d*", line_clean)
-        if not numbers:
-            continue
-        try:
-            value = float(numbers[-1].replace(',', '.'))
-        except ValueError:
-            continue
-        if "dgt crit" in line_clean or "crit dmg" in line_clean:
-            crit_dmg = value
-        elif "taux crit" in line_clean or "crit rate" in line_clean:
-            crit_rate = value
+    if crit_rate == 0 and crit_dmg == 0:
+        await interaction.followup.send("No valid artifact stats detected in the image.", ephemeral=True)
+        return
 
     cv = calculate_cv(crit_rate, crit_dmg)
     artifact = {"crit_rate": crit_rate, "crit_dmg": crit_dmg, "cv": cv}
@@ -403,7 +441,7 @@ async def scan(interaction: discord.Interaction, image: discord.Attachment):
     new_rank = get_leaderboard_ranks().get(user_id)
     rank_msg = build_rank_message(old_rank, new_rank, was_new_user)
 
-    # Create an embed for the scan result
+    # Build embed for scan result
     embed = Embed(title="Artifact Scan Result", color=0x1abc9c)
     embed.description = f"**Rank:** {rank_msg}"
     embed.add_field(name="CRIT Rate", value=f"{crit_rate:.1f}%", inline=True)
@@ -417,7 +455,7 @@ async def scan(interaction: discord.Interaction, image: discord.Attachment):
         ephemeral=False
     )
 
-# /leaderboard command
+# /leaderboard
 @bot.tree.command(name="leaderboard", description="Display the CRIT Value leaderboard publicly")
 async def leaderboard(interaction: discord.Interaction):
     if not data:
