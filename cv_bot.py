@@ -201,7 +201,7 @@ async def submit(interaction: discord.Interaction, crit_rate: float, crit_dmg: f
     embed.add_field(name="Rank", value=rank_msg, inline=False)
     embed.set_author(name=interaction.user.display_name, icon_url=interaction.user.display_avatar.url)
 
-    await interaction.response.send_message(embed=embed, ephemeral=True)
+    await interaction.response.send_message(embed=embed)
 
 # /list command
 @bot.tree.command(name="list", description="List all artifacts for a user")
