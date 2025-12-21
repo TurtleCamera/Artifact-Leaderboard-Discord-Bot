@@ -34,7 +34,7 @@ Sets your display name on the leaderboard.
 Manually submit an artifact.
 
 * `crit_rate` and `crit_dmg` are **percent values** (e.g., 31.1).
-* CV is automatically calculated:
+* CRIT Value (CV) is automatically calculated:
 
 ```
 
@@ -52,7 +52,6 @@ Scan an artifact screenshot and automatically extract CRIT Rate & CRIT DMG using
 * Supports multiple languages (based on `languages.json`), including English and Simplified Chinese.
 * Circlets are automatically rejected.
 * If a stat is missing in the screenshot, it is assumed to be `0`.
-* Fails gracefully if no valid stats are detected.
 * **Note:** EasyOCR works faster with a GPU. If no GPU is available, scans may take longer.
 
 Example:
