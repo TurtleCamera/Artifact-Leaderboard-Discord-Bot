@@ -317,14 +317,19 @@ async def modify(interaction: discord.Interaction, user_identifier: str, artifac
 
     target_member = interaction.guild.get_member(int(target_user_id))
     display_name = get_display_name(target_user_id, fallback_user=target_member)
-    await interaction.response.send_message(
-        f"Modified artifact #{artifact_index} for **{display_name}**:\n"
-        f"CRIT Rate: {old_cr:.1f} → {crit_rate:.1f}\n"
-        f"CRIT DMG: {old_cd:.1f} → {crit_dmg:.1f}\n"
-        f"CV: {old_cv:.1f} → {artifact['cv']:.1f}\n"
-        f"Rank: {rank_msg}",
-        ephemeral=True
+
+    # Build embed for modification
+    embed = discord.Embed(
+        title=f"Artifact #{artifact_index} Modified",
+        color=0xf1c40f
     )
+    embed.set_author(name=display_name)
+    embed.add_field(name="CRIT Rate", value=f"{old_cr:.1f} → {crit_rate:.1f}%", inline=True)
+    embed.add_field(name="CRIT DMG", value=f"{old_cd:.1f} → {crit_dmg:.1f}%", inline=True)
+    embed.add_field(name="CRIT Value", value=f"{old_cv:.1f} → {artifact['cv']:.1f}", inline=True)
+    embed.add_field(name="Rank", value=rank_msg, inline=False)
+
+    await interaction.response.send_message(embed=embed)  # Public message
 
 # /scan command
 @bot.tree.command(name="scan", description="Scan an artifact screenshot")
