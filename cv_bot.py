@@ -179,28 +179,29 @@ async def submit(interaction: discord.Interaction, crit_rate: float, crit_dmg: f
 
     old_rank = get_leaderboard_ranks().get(user_id)
 
+    # Calculate CV and add artifact
     cv = calculate_cv(crit_rate, crit_dmg)
     artifact = {"crit_rate": crit_rate, "crit_dmg": crit_dmg, "cv": cv}
     data[user_id]["artifacts"].append(artifact)
     data[user_id]["max_cv"] = max(data[user_id]["max_cv"], cv)
     save_data(data)
 
+    # Calculate new rank
     new_rank = get_leaderboard_ranks().get(user_id)
     rank_msg = build_rank_message(old_rank, new_rank, was_new_user)
 
-    channel = interaction.channel
-    webhook = await channel.create_webhook(name="ArtiBotTempWebhook")
-    await webhook.send(
-        content=f"Artifact submitted to CRIT Value leaderboard: {cv:.1f} CV\nRank: {rank_msg}",
-        username=interaction.user.display_name,
-        avatar_url=interaction.user.display_avatar.url
+    # Build embed
+    embed = Embed(
+        title="Artifact Submitted",
+        color=0x1abc9c
     )
-    await webhook.delete()
+    embed.add_field(name="CRIT Rate", value=f"{crit_rate:.1f}%", inline=True)
+    embed.add_field(name="CRIT DMG", value=f"{crit_dmg:.1f}%", inline=True)
+    embed.add_field(name="CRIT Value", value=f"{cv:.1f}", inline=True)
+    embed.add_field(name="Rank", value=rank_msg, inline=False)
+    embed.set_author(name=interaction.user.display_name, icon_url=interaction.user.display_avatar.url)
 
-    await interaction.response.send_message(
-        "Your artifact has been submitted!",
-        ephemeral=True
-    )
+    await interaction.response.send_message(embed=embed, ephemeral=True)
 
 # /list command
 @bot.tree.command(name="list", description="List all artifacts for a user")
