@@ -213,6 +213,75 @@ async def list_artifacts(interaction: discord.Interaction, user_identifier: str 
         ephemeral=True
     )
 
+# /remove command
+@bot.tree.command(name="remove", description="Remove a user or a specific artifact")
+@app_commands.describe(
+    user_identifier="Leaderboard name, mention, or Discord username",
+    artifact_index="Optional: index of artifact to remove (1-based). Leave empty to remove the whole user"
+)
+async def remove(interaction: discord.Interaction, user_identifier: str, artifact_index: int = None):
+    target_user_id = None
+
+    # Resolve user_identifier to user_id (same logic as /list)
+    # Check /name first
+    for uid, udata in data.items():
+        if udata.get("display_name") == user_identifier:
+            target_user_id = uid
+            break
+
+    # Then check for mention
+    if not target_user_id and interaction.guild:
+        if len(interaction.message.mentions) > 0:
+            target_user_id = str(interaction.message.mentions[0].id)
+
+    # Then check for Discord username#discriminator
+    if not target_user_id:
+        for member in interaction.guild.members:
+            if f"{member.name}#{member.discriminator}" == user_identifier:
+                target_user_id = str(member.id)
+                break
+
+    # If user not found
+    if not target_user_id or target_user_id not in data:
+        await interaction.response.send_message(
+            f"User '{user_identifier}' not found in the leaderboard.",
+            ephemeral=True
+        )
+        return
+
+    # Remove a specific artifact
+    if artifact_index is not None:
+        artifacts = data[target_user_id].get("artifacts", [])
+        if artifact_index < 1 or artifact_index > len(artifacts):
+            await interaction.response.send_message(
+                f"Invalid artifact index. Please provide a number between 1 and {len(artifacts)}.",
+                ephemeral=True
+            )
+            return
+
+        removed_artifact = artifacts.pop(artifact_index - 1)
+        # Update max CV
+        if artifacts:
+            data[target_user_id]["max_cv"] = max(arti["cv"] for arti in artifacts)
+        else:
+            data[target_user_id]["max_cv"] = 0
+
+        save_data(data)
+        await interaction.response.send_message(
+            f"Removed artifact #{artifact_index} for **{get_display_name(target_user_id, interaction.user)}**.",
+            ephemeral=True
+        )
+        return
+
+    # Remove the entire user
+    removed_name = get_display_name(target_user_id, interaction.user)
+    data.pop(target_user_id)
+    save_data(data)
+    await interaction.response.send_message(
+        f"Removed **{removed_name}** and all their artifacts from the leaderboard.",
+        ephemeral=True
+    )
+
 # /leaderboard command (ASCII, mobile-friendly)
 @bot.tree.command(name="leaderboard", description="Display the CRIT Value leaderboard publicly")
 async def leaderboard(interaction: discord.Interaction):
