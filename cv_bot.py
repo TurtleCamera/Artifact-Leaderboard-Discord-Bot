@@ -20,6 +20,7 @@ DATA_FILE = "data.json"  # Data file
 # Setup intents
 intents = discord.Intents.default()
 intents.message_content = True  # optional for future features
+intents.members = True  # Required to fetch guild members
 
 # Create bot
 bot = commands.Bot(command_prefix="!", intents=intents)
@@ -43,10 +44,15 @@ data = load_data()
 
 # ----------------- Helper Functions -----------------
 
-# Initialize user if not exist
-def ensure_user(user_id: str):
+# Initialize user if they don't exist
+def ensure_user(user_id: str, user: discord.User = None):
     if user_id not in data:
-        data[user_id] = {"display_name": None, "artifacts": [], "max_cv": 0}
+        data[user_id] = {
+            "display_name": None,
+            "username": user.name if user else None,
+            "artifacts": [],
+            "max_cv": 0
+        }
 
 # Get display name
 def get_display_name(user_id: str, fallback_user=None):
@@ -80,18 +86,37 @@ def get_leaderboard_ranks():
     return {user_id: rank + 1 for rank, (user_id, _) in enumerate(sorted_leaderboard)}
 
 # Resolve user identifier to user_id
-def resolve_user(interaction: discord.Interaction, user_identifier: str = None) -> str:
+async def resolve_user(interaction: discord.Interaction, user_identifier: str = None) -> str:
     if not user_identifier:
         return str(interaction.user.id)
 
-    for uid, udata in data.items():
-        if udata.get("display_name") == user_identifier:
+    user_identifier_lower = user_identifier.lower()
+
+    # 1. Check if identifier is a mention <@!id> or <@id>
+    match = re.match(r"<@!?(\d+)>", user_identifier)
+    if match:
+        uid = match.group(1)
+        if uid in data:
             return uid
 
-    if interaction.guild:
-        for member in interaction.guild.members:
-            if member.name == user_identifier:
-                return str(member.id)
+    # 2. Match leaderboard display name (case-insensitive)
+    for uid, udata in data.items():
+        display_name = udata.get("display_name")
+        if display_name and display_name.lower() == user_identifier_lower:
+            return uid
+
+    # 3. Match stored Discord username (case-insensitive)
+    for uid, udata in data.items():
+        username = udata.get("username")
+        if username and username.lower() == user_identifier_lower:
+            return uid
+
+    # 4. Match plain username in guild (case-insensitive)
+    for member in interaction.guild.members:
+        if member.name.lower() == user_identifier_lower:
+            ensure_user(str(member.id), member)
+            return str(member.id)
+
     return None
 
 # Build rank change message
@@ -111,11 +136,31 @@ async def on_ready():
     print(f"Logged in as {bot.user} (ID: {bot.user.id})")
     print("------")
 
+    # Backfill missing usernames in data.json
+    data_changed = False
+    for uid, udata in data.items():
+        # Only backfill if username is missing or empty
+        if not udata.get("username"):
+            try:
+                user = await bot.fetch_user(int(uid))
+                if user:
+                    udata["username"] = user.name
+                    data_changed = True
+            except Exception:
+                continue
+
+    # Save only if we actually changed something
+    if data_changed:
+        save_data(data)
+        print("Backfilled missing usernames in data.json")
+
+    # Load guild ID
     with open("guild_id", "r") as f:
         GUILD_ID = int(f.read().strip())
     guild = discord.Object(id=GUILD_ID)
 
     try:
+        # Force guild-specific sync
         bot.tree.copy_global_to(guild=guild)
         synced = await bot.tree.sync(guild=guild)
         print(f"Synced {len(synced)} command(s) to guild {GUILD_ID}")
@@ -147,15 +192,18 @@ async def submit(interaction: discord.Interaction, crit_rate: float, crit_dmg: f
 
     old_rank = get_leaderboard_ranks().get(user_id)
 
+    # Calculate CV and add artifact
     cv = calculate_cv(crit_rate, crit_dmg)
     artifact = {"crit_rate": crit_rate, "crit_dmg": crit_dmg, "cv": cv}
     data[user_id]["artifacts"].append(artifact)
     data[user_id]["max_cv"] = max(data[user_id]["max_cv"], cv)
     save_data(data)  # Save after addition
 
+    # Calculate new rank and build message
     new_rank = get_leaderboard_ranks().get(user_id)
     rank_msg = build_rank_message(old_rank, new_rank, was_new_user)
 
+    # Use temporary webhook to preserve user display
     channel = interaction.channel
     webhook = await channel.create_webhook(name="ArtiBotTempWebhook")
     await webhook.send(
@@ -174,7 +222,7 @@ async def submit(interaction: discord.Interaction, crit_rate: float, crit_dmg: f
 @bot.tree.command(name="list", description="List all artifacts for a user")
 @app_commands.describe(user_identifier="Optional: leaderboard name or Discord username")
 async def list_artifacts(interaction: discord.Interaction, user_identifier: str = None):
-    target_user_id = resolve_user(interaction, user_identifier)
+    target_user_id = await resolve_user(interaction, user_identifier)
     if not target_user_id or target_user_id not in data:
         msg = "You don't have any artifacts on the leaderboard yet." if not user_identifier else f"User '{user_identifier}' not found in the leaderboard."
         await interaction.response.send_message(msg, ephemeral=True)
@@ -185,6 +233,7 @@ async def list_artifacts(interaction: discord.Interaction, user_identifier: str 
         await interaction.response.send_message("No artifacts found for this user.", ephemeral=True)
         return
 
+    # Build artifact list table
     lines = [
         "Index | CR   | CD   | CV   ",
         "------+------+------+-----"
@@ -203,7 +252,7 @@ async def list_artifacts(interaction: discord.Interaction, user_identifier: str 
     artifact_index="Optional: index of artifact to remove (1-based). Leave empty to remove the whole user"
 )
 async def remove(interaction: discord.Interaction, user_identifier: str, artifact_index: int = None):
-    target_user_id = resolve_user(interaction, user_identifier)
+    target_user_id = await resolve_user(interaction, user_identifier)
     if not target_user_id or target_user_id not in data:
         await interaction.response.send_message(f"User '{user_identifier}' not found in the leaderboard.", ephemeral=True)
         return
@@ -219,6 +268,7 @@ async def remove(interaction: discord.Interaction, user_identifier: str, artifac
             )
             return
 
+        # Remove specified artifact
         removed = artifacts.pop(artifact_index - 1)
         user_data["max_cv"] = max((arti["cv"] for arti in artifacts), default=0)
         save_data(data)  # Save after artifact removal
@@ -228,6 +278,7 @@ async def remove(interaction: discord.Interaction, user_identifier: str, artifac
         )
         return
 
+    # Remove entire user
     removed_name = get_display_name(target_user_id, interaction.user)
     data.pop(target_user_id)
     save_data(data)  # Save after user removal
@@ -242,7 +293,7 @@ async def remove(interaction: discord.Interaction, user_identifier: str, artifac
     crit_dmg="New CRIT DMG value"
 )
 async def modify(interaction: discord.Interaction, user_identifier: str, artifact_index: int, crit_rate: float, crit_dmg: float):
-    target_user_id = resolve_user(interaction, user_identifier)
+    target_user_id = await resolve_user(interaction, user_identifier)
     if not target_user_id or target_user_id not in data:
         await interaction.response.send_message(f"User '{user_identifier}' not found in the leaderboard.", ephemeral=True)
         return
@@ -257,6 +308,8 @@ async def modify(interaction: discord.Interaction, user_identifier: str, artifac
 
     artifact = artifacts[artifact_index - 1]
     old_cv, old_cr, old_cd = artifact["cv"], artifact["crit_rate"], artifact["crit_dmg"]
+
+    # Update artifact values
     artifact["crit_rate"], artifact["crit_dmg"], artifact["cv"] = crit_rate, crit_dmg, calculate_cv(crit_rate, crit_dmg)
     data[target_user_id]["max_cv"] = max((arti["cv"] for arti in artifacts), default=0)
     save_data(data)  # Save after modification
@@ -344,7 +397,7 @@ async def scan(interaction: discord.Interaction, image: discord.Attachment):
             f"Scan result:\n"
             f"CRIT Rate: {crit_rate:.1f}\n"
             f"CRIT DMG: {crit_dmg:.1f}\n"
-            f"CV: {cv:.1f}\n"
+            f"CRIT Value: {cv:.1f}\n"
             f"Rank: {rank_msg}"
         ),
         file=discord.File(fp=io.BytesIO(image_bytes), filename=image.filename),
