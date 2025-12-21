@@ -4,9 +4,9 @@
         "crit_dmg": ["crit dmg"],
         "circlet": ["circlet"]
     },
-    "fr": {
-        "crit_rate": ["taux crit"],
-        "crit_dmg": ["dgt crit"],
-        "circlet": ["diadème"]
+    "ch_sim": {
+        "crit_rate": ["暴击率"],
+        "crit_dmg": ["暴击伤害"],
+        "circlet": ["理之冠"]
     }
 }
