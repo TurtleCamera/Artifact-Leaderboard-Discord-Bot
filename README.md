@@ -54,11 +54,6 @@ Scan an artifact screenshot and automatically extract CRIT Rate & CRIT DMG using
 * If a stat is missing in the screenshot, it is assumed to be `0`.
 * Fails gracefully if no valid stats are detected.
 * **Note:** EasyOCR works faster with a GPU. If no GPU is available, scans may take longer.
-* New languages can be added dynamically by adding a key to `languages.json` with the fields:
-
-* `crit_rate`
-* `crit_dmg`
-* `circlet`
 
 Example:
 
@@ -143,10 +138,10 @@ Displays the top artifacts by CRIT Value.
 
 ```plaintext
 /name jyov
-/submit 31.1 62.2
+/submit 14.0 22.5
 /scan artifact_screenshot.png
 /list
-/modify jyov 1 33.0 65.0
+/modify jyov 1 10.9 29.5
 /remove jyov 1
 /leaderboard
 /help
