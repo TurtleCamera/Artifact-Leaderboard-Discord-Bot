@@ -5,13 +5,12 @@ import json
 import os
 
 # Constants
-MAX_NAME_LENGTH = 7 # Max name length on leaderboard (longest possible for mobile)
-MAX_LEADERBOARD_PLAYERS = 25 # Max players to display on leaderboard (Discord's limit)
-DATA_FILE = "data.json" # Data file
-
+MAX_NAME_LENGTH = 7  # Max name length on leaderboard (longest possible for mobile)
+MAX_LEADERBOARD_PLAYERS = 25  # Max players to display on leaderboard (Discord's limit)
+DATA_FILE = "data.json"  # Data file
 
 # Setup intents
-intents = discord.Intents.default() 
+intents = discord.Intents.default()
 intents.message_content = True  # optional for future features
 
 # Create bot
@@ -20,7 +19,6 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 # Load token
 with open("token", "r") as f:
     TOKEN = f.read().strip()
-
 
 # Data helper functions
 def load_data():
@@ -58,7 +56,6 @@ def get_leaderboard_ranks():
 
     return {user_id: rank + 1 for rank, (user_id, _) in enumerate(sorted_leaderboard)}
 
-
 # Events
 # Bot ready
 @bot.event
@@ -70,7 +67,6 @@ async def on_ready():
         print(f"Synced {len(synced)} command(s)")
     except Exception as e:
         print(f"Error syncing commands: {e}")
-
 
 # Commands
 # /name command
@@ -88,8 +84,8 @@ async def name(interaction: discord.Interaction, new_name: str):
     )
 
 # /submit command
-@bot.tree.command(name="submit", description="Submit an artifact (crit rate & crit dmg)")
-@app_commands.describe(crit_rate="Crit Rate of artifact", crit_dmg="Crit Damage of artifact")
+@bot.tree.command(name="submit", description="Submit an artifact (CRIT Rate & CRIT DMG)")
+@app_commands.describe(crit_rate="CRIT Rate of artifact", crit_dmg="CRIT DMG of artifact")
 async def submit(interaction: discord.Interaction, crit_rate: float, crit_dmg: float):
     user_id = str(interaction.user.id)
 
@@ -193,6 +189,7 @@ async def leaderboard(interaction: discord.Interaction):
         count_45 = count_artifacts(user_data["artifacts"], 45)
         count_40 = count_artifacts(user_data["artifacts"], 40)
 
+        # Left-align numbers
         lines.append(
             f"{rank:<2} | "
             f"{name.ljust(MAX_NAME_LENGTH)} | "
@@ -203,7 +200,6 @@ async def leaderboard(interaction: discord.Interaction):
 
     leaderboard_text = "\n".join(lines)
     await interaction.response.send_message(f"```\n{leaderboard_text}\n```")
-
 
 # Run bot
 bot.run(TOKEN)
