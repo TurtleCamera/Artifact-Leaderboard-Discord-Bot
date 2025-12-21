@@ -190,7 +190,7 @@ async def submit(interaction: discord.Interaction, crit_rate: float, crit_dmg: f
 
 # /list command
 @bot.tree.command(name="list", description="List all artifacts for a user")
-@app_commands.describe(user_identifier="Optional: leaderboard name, mention, or Discord username")
+@app_commands.describe(user_identifier="Optional: leaderboard name or Discord username")
 async def list_artifacts(interaction: discord.Interaction, user_identifier: str = None):
     target_user_id = resolve_user(interaction, user_identifier)
 
@@ -208,12 +208,12 @@ async def list_artifacts(interaction: discord.Interaction, user_identifier: str 
         await interaction.response.send_message("No artifacts found for this user.", ephemeral=True)
         return
 
-    # Build artifact table
+    # Build artifact table (zero-based index)
     lines = [
         "Index | CR    | CD    | CV    ",
         "------+-------+-------+-------"
     ]
-    for idx, arti in enumerate(user_data["artifacts"], start=1):
+    for idx, arti in enumerate(user_data["artifacts"]):
         lines.append(
             f"{idx:<5} | "
             f"{arti['crit_rate']:<5.1f} | "
@@ -231,8 +231,8 @@ async def list_artifacts(interaction: discord.Interaction, user_identifier: str 
 # /remove command
 @bot.tree.command(name="remove", description="Remove a user or a specific artifact")
 @app_commands.describe(
-    user_identifier="Leaderboard name, mention, or Discord username",
-    artifact_index="Optional: index of artifact to remove (1-based). Leave empty to remove the whole user"
+    user_identifier="Leaderboard name or Discord username",
+    artifact_index="Optional: index of artifact to remove (0-based). Leave empty to remove the whole user"
 )
 async def remove(interaction: discord.Interaction, user_identifier: str, artifact_index: int = None):
     target_user_id = resolve_user(interaction, user_identifier)
@@ -248,14 +248,14 @@ async def remove(interaction: discord.Interaction, user_identifier: str, artifac
     # Remove a specific artifact
     if artifact_index is not None:
         artifacts = data[target_user_id].get("artifacts", [])
-        if artifact_index < 1 or artifact_index > len(artifacts):
+        if artifact_index < 0 or artifact_index >= len(artifacts):
             await interaction.response.send_message(
-                f"Invalid artifact index. Please provide a number between 1 and {len(artifacts)}.",
+                f"Invalid artifact index. Please provide a number between 0 and {len(artifacts)-1}.",
                 ephemeral=True
             )
             return
 
-        removed_artifact = artifacts.pop(artifact_index - 1)
+        removed_artifact = artifacts.pop(artifact_index)
         # Update max CV
         if artifacts:
             data[target_user_id]["max_cv"] = max(arti["cv"] for arti in artifacts)
@@ -281,8 +281,8 @@ async def remove(interaction: discord.Interaction, user_identifier: str, artifac
 # /modify command
 @bot.tree.command(name="modify", description="Modify an existing artifact")
 @app_commands.describe(
-    user_identifier="Leaderboard name, mention, or Discord username",
-    artifact_index="Index of the artifact to modify (1-based)",
+    user_identifier="Leaderboard name or Discord username",
+    artifact_index="Index of the artifact to modify (0-based)",
     crit_rate="New CRIT Rate value",
     crit_dmg="New CRIT DMG value"
 )
@@ -298,14 +298,14 @@ async def modify(interaction: discord.Interaction, user_identifier: str, artifac
         return
 
     artifacts = data[target_user_id].get("artifacts", [])
-    if artifact_index < 1 or artifact_index > len(artifacts):
+    if artifact_index < 0 or artifact_index >= len(artifacts):
         await interaction.response.send_message(
-            f"Invalid artifact index. Please provide a number between 1 and {len(artifacts)}.",
+            f"Invalid artifact index. Please provide a number between 0 and {len(artifacts)-1}.",
             ephemeral=True
         )
         return
 
-    artifact = artifacts[artifact_index - 1]
+    artifact = artifacts[artifact_index]
     old_cv = artifact["cv"]
     old_cr = artifact["crit_rate"]
     old_cd = artifact["crit_dmg"]
