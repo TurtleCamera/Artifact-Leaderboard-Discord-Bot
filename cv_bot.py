@@ -282,6 +282,89 @@ async def remove(interaction: discord.Interaction, user_identifier: str, artifac
         ephemeral=True
     )
 
+# /modify command
+@bot.tree.command(name="modify", description="Modify an existing artifact")
+@app_commands.describe(
+    user_identifier="Leaderboard name, mention, or Discord username",
+    artifact_index="Index of the artifact to modify (1-based)",
+    crit_rate="New CRIT Rate value",
+    crit_dmg="New CRIT DMG value"
+)
+async def modify(interaction: discord.Interaction, user_identifier: str, artifact_index: int, crit_rate: float, crit_dmg: float):
+    target_user_id = None
+
+    # Resolve user_identifier to user_id (same logic as /list)
+    for uid, udata in data.items():
+        if udata.get("display_name") == user_identifier:
+            target_user_id = uid
+            break
+
+    # Then check for mention
+    if not target_user_id and interaction.guild:
+        if len(interaction.message.mentions) > 0:
+            target_user_id = str(interaction.message.mentions[0].id)
+
+    # Then check for Discord username#discriminator
+    if not target_user_id:
+        for member in interaction.guild.members:
+            if f"{member.name}#{member.discriminator}" == user_identifier:
+                target_user_id = str(member.id)
+                break
+
+    # If user not found
+    if not target_user_id or target_user_id not in data:
+        await interaction.response.send_message(
+            f"User '{user_identifier}' not found in the leaderboard.",
+            ephemeral=True
+        )
+        return
+
+    artifacts = data[target_user_id].get("artifacts", [])
+    if artifact_index < 1 or artifact_index > len(artifacts):
+        await interaction.response.send_message(
+            f"Invalid artifact index. Please provide a number between 1 and {len(artifacts)}.",
+            ephemeral=True
+        )
+        return
+
+    artifact = artifacts[artifact_index - 1]
+    old_cv = artifact["cv"]
+    old_cr = artifact["crit_rate"]
+    old_cd = artifact["crit_dmg"]
+
+    # Update artifact
+    artifact["crit_rate"] = crit_rate
+    artifact["crit_dmg"] = crit_dmg
+    artifact["cv"] = crit_rate * 2 + crit_dmg
+
+    # Update max CV
+    data[target_user_id]["max_cv"] = max((arti["cv"] for arti in artifacts), default=0)
+    save_data(data)
+
+    # Check leaderboard ranks
+    ranks_before = get_leaderboard_ranks()
+    old_rank = ranks_before.get(target_user_id)
+    ranks_after = get_leaderboard_ranks()
+    new_rank = ranks_after.get(target_user_id)
+
+    # Build rank change message
+    if new_rank < old_rank:
+        rank_msg = f"▲ +{old_rank - new_rank} → #{new_rank}"
+    elif new_rank > old_rank:
+        rank_msg = f"▼ -{new_rank - old_rank} → #{new_rank}"
+    else:
+        rank_msg = f"▬ Unchanged (#{new_rank})"
+
+    # Send confirmation
+    await interaction.response.send_message(
+        f"Modified artifact #{artifact_index} for **{get_display_name(target_user_id, interaction.user)}**:\n"
+        f"CRIT Rate: {old_cr:.1f} → {crit_rate:.1f}\n"
+        f"CRIT DMG: {old_cd:.1f} → {crit_dmg:.1f}\n"
+        f"CV: {old_cv:.2f} → {artifact['cv']:.2f}\n"
+        f"Leaderboard change: {rank_msg}",
+        ephemeral=True
+    )
+
 # /leaderboard command (ASCII, mobile-friendly)
 @bot.tree.command(name="leaderboard", description="Display the CRIT Value leaderboard publicly")
 async def leaderboard(interaction: discord.Interaction):
