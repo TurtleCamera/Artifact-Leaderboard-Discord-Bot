@@ -34,9 +34,16 @@ def save_data(data):
 data = load_data()
 
 # Helper function to get display name
-def get_display_name(user_id, discord_name):
+def get_display_name(user_id: str, fallback_user: discord.Member = None):
     user_data = data.get(str(user_id), {})
-    return user_data.get("display_name") or discord_name
+    display_name = user_data.get("display_name")
+    if display_name:
+        return display_name
+    # Fallback to Discord username if available
+    if fallback_user:
+        return fallback_user.display_name
+    # Last resort
+    return "Unknown"
 
 # Helper function to count artifacts above a CV threshold
 def count_artifacts(artifacts, threshold):
@@ -181,7 +188,8 @@ async def leaderboard(interaction: discord.Interaction):
         sorted_leaderboard[:MAX_LEADERBOARD_PLAYERS],
         start=1
     ):
-        name = get_display_name(user_id, "Unknown")
+        member = interaction.guild.get_member(int(user_id))  # returns a Member or None
+        name = get_display_name(user_id, fallback_user=member)
         if len(name) > MAX_NAME_LENGTH:
             name = name[:MAX_NAME_LENGTH - 1] + "-"
 
