@@ -35,6 +35,10 @@ def get_display_name(user_id, discord_name):
     user_data = data.get(str(user_id), {})
     return user_data.get("display_name") or discord_name
 
+# Helper: count artifacts above a CV threshold
+def count_artifacts(artifacts, threshold):
+    return sum(1 for arti in artifacts if arti["cv"] >= threshold)
+
 # Event: bot ready
 @bot.event
 async def on_ready():
@@ -103,6 +107,56 @@ async def submit(interaction: discord.Interaction, crit_rate: float, crit_dmg: f
 
     # Respond ephemerally to user to confirm submission
     await interaction.response.send_message("Your artifact has been submitted publicly!", ephemeral=True)
+
+# /leaderboard command
+@bot.tree.command(name="leaderboard", description="Display the CRIT Value leaderboard publicly")
+async def leaderboard(interaction: discord.Interaction):
+    if not data:
+        await interaction.response.send_message("The leaderboard is empty.", ephemeral=True)
+        return
+
+    # Build sorted leaderboard
+    sorted_leaderboard = sorted(
+        data.items(),
+        key=lambda item: (
+            item[1]["max_cv"],
+            count_artifacts(item[1]["artifacts"], 45),
+            count_artifacts(item[1]["artifacts"], 40)
+        ),
+        reverse=True
+    )
+
+    # Create embed
+    embed = discord.Embed(
+        title="🏆 CRIT Value Leaderboard 🏆",
+        color=discord.Color.gold()
+    )
+
+    # Add each player as a field
+    for rank, (user_id, user_data) in enumerate(sorted_leaderboard, start=1):
+        display_name = get_display_name(user_id, "Unknown")
+        count_45 = count_artifacts(user_data["artifacts"], 45)
+        count_40 = count_artifacts(user_data["artifacts"], 40)
+        max_cv = user_data["max_cv"]
+
+        # Optional: add emoji for top 3
+        if rank == 1:
+            rank_emoji = "🥇"
+        elif rank == 2:
+            rank_emoji = "🥈"
+        elif rank == 3:
+            rank_emoji = "🥉"
+        else:
+            rank_emoji = f"{rank}."
+
+        embed.add_field(
+            name=f"{rank_emoji} {display_name}",
+            value=f"45+: {count_45} | 40+: {count_40} | Max CV: {max_cv:.2f}",
+            inline=False
+        )
+
+    # Send publicly in the channel
+    await interaction.response.send_message(embed=embed)
 
 # Run bot
 bot.run(TOKEN)
