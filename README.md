@@ -37,11 +37,11 @@ Manually submit an artifact.
 * CRIT Value (CV) is automatically calculated:
 
 ```
-
 CV = CRIT Rate * 2 + CRIT DMG
+```
 
-````
 * Circlets **cannot** be submitted.
+* Negative values or CRIT Value > 54.6 are **rejected**.
 
 ---
 
@@ -51,7 +51,8 @@ Scan an artifact screenshot and automatically extract CRIT Rate & CRIT DMG using
 
 * Supports multiple languages (based on `languages.json`), including English and Simplified Chinese.
 * Circlets are automatically rejected.
-* If a stat is missing in the screenshot, it is assumed to be `0`.
+* If a stat is missing in the screenshot, it is **assumed to be `0`**.
+* Negative values or impossible stats are automatically adjusted to `0` for CV calculation.
 * **Note:** EasyOCR works faster with a GPU. If no GPU is available, scans may take longer.
 
 Example:
@@ -62,7 +63,7 @@ Example:
   "crit_dmg": ["暴击伤害"],
   "circlet": ["理之冠"]
 }
-````
+```
 
 ---
 
@@ -90,6 +91,7 @@ Remove a user or a specific artifact.
 Modify an existing artifact.
 
 * Updates CRIT Rate, CRIT DMG, and recalculates CRIT Value.
+* Negative or CRIT Value > 54.6 are **rejected**.
 * Ranks are automatically updated based on the new values.
 
 ---
@@ -109,6 +111,7 @@ Displays the top artifacts by CRIT Value.
 * Only **CRIT Rate** and **CRIT DMG** are considered for CRIT Value.
 * Circlets are **not allowed**.
 * CRIT Value is automatically calculated for all submissions.
+* Negative or CRIT Value > 54.6 are **not allowed**.
 * Values are stored persistently in `data.json`.
 
 ---
@@ -116,19 +119,14 @@ Displays the top artifacts by CRIT Value.
 ## OCR & Multilingual Support
 
 * Uses **EasyOCR** for artifact screenshot scanning.
-
 * Automatically loads languages from `languages.json`.
-
 * Chinese OCR (`ch_sim` or `ch_tra`) **requires English** to be included.
-
 * New languages can be added dynamically by adding a new key in `languages.json` with the fields:
 
   * `crit_rate`
   * `crit_dmg`
   * `circlet`
-
-* The bot assumes **0** for any missing stat in a screenshot.
-
+* The bot assumes **0** for any missing or invalid stat in a screenshot.
 * **Note:** EasyOCR works faster with a GPU. Without a GPU, scans may take longer.
 
 ---
