@@ -13,7 +13,7 @@ import numpy as np
 ocr_reader = easyocr.Reader(['en', 'fr'])  # English + French
 
 # Constants
-MAX_NAME_LENGTH = 7  # Max name length on leaderboard (longest possible for mobile)
+MAX_NAME_LENGTH = 8  # Max name length on leaderboard (longest possible for mobile)
 MAX_LEADERBOARD_PLAYERS = 25  # Max players to display on leaderboard (Discord's limit)
 DATA_FILE = "data.json"  # Data file
 
@@ -186,11 +186,11 @@ async def list_artifacts(interaction: discord.Interaction, user_identifier: str 
         return
 
     lines = [
-        "Index | CR    | CD    | CV    ",
-        "------+-------+-------+-------"
+        "Index | CR   | CD   | CV   ",
+        "------+------+------+-----"
     ]
     for idx, arti in enumerate(user_data["artifacts"], start=1):  # 1-based indexing
-        lines.append(f"{idx:<5} | {arti['crit_rate']:<5.1f} | {arti['crit_dmg']:<5.1f} | {arti['cv']:<5.2f}")
+        lines.append(f"{idx:<5} | {arti['crit_rate']:<4.1f} | {arti['crit_dmg']:<4.1f} | {arti['cv']:<4.1f}")
 
     artifact_text = "\n".join(lines)
     display_name = get_display_name(target_user_id, interaction.user)
@@ -373,7 +373,7 @@ async def leaderboard(interaction: discord.Interaction):
         reverse=True
     )
 
-    lines = ["#  | Name    | Max   | 45+ | 40+", "---+---------+-------+-----+----"]
+    lines = ["#  | Name     | Max  | 45+ | 40+", "---+----------+------+-----+----"]
 
     for rank, (user_id, user_data) in enumerate(sorted_leaderboard[:MAX_LEADERBOARD_PLAYERS], start=1):
         member = interaction.guild.get_member(int(user_id))
@@ -381,7 +381,7 @@ async def leaderboard(interaction: discord.Interaction):
         if len(name) > MAX_NAME_LENGTH:
             name = name[:MAX_NAME_LENGTH - 1] + "-"
         lines.append(
-            f"{rank:<2} | {name.ljust(MAX_NAME_LENGTH)} | {user_data['max_cv']:<5.2f} | "
+            f"{rank:<2} | {name.ljust(MAX_NAME_LENGTH)} | {user_data['max_cv']:<4.1f} | "
             f"{count_artifacts(user_data['artifacts'], 45):<3} | {count_artifacts(user_data['artifacts'], 40):<3}"
         )
 
