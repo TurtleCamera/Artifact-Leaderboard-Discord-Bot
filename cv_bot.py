@@ -319,10 +319,20 @@ async def submit(interaction: discord.Interaction, crit_rate: float, crit_dmg: f
     rank_msg = build_rank_message(old_rank, new_rank, was_new_user)
 
     embed = Embed(title="Artifact Submitted", color=0x1abc9c)
-    embed.add_field(name="CRIT Rate", value=f"{crit_rate:.1f}%", inline=True)
-    embed.add_field(name="CRIT DMG", value=f"{crit_dmg:.1f}%", inline=True)
-    embed.add_field(name="CRIT Value", value=f"{cv:.1f}", inline=True)
-    embed.add_field(name="Rank", value=rank_msg, inline=False)
+    embed.add_field(
+        name="",  # invisible field name
+        value=(
+            f"CRIT Rate: {crit_rate:.1f}%\n"
+            f"CRIT DMG: {crit_dmg:.1f}%\n"
+            f"**CRIT Value: {cv:.1f}**"
+        ),
+        inline=False
+    )
+    embed.add_field(
+        name=f"**Rank:** {rank_msg}",
+        value=(""),
+        inline=False
+    )
     embed.set_author(name=interaction.user.display_name, icon_url=interaction.user.display_avatar.url)
 
     await interaction.response.send_message(embed=embed)
@@ -471,10 +481,20 @@ async def modify(interaction: discord.Interaction, user_identifier: str, artifac
 
     embed = discord.Embed(title=f"Artifact #{artifact_index} Modified", color=0xf1c40f)
     embed.set_author(name=display_name)
-    embed.add_field(name="CRIT Rate", value=f"{old_cr:.1f} → {crit_rate:.1f}%", inline=True)
-    embed.add_field(name="CRIT DMG", value=f"{old_cd:.1f} → {crit_dmg:.1f}%", inline=True)
-    embed.add_field(name="CRIT Value", value=f"{old_cv:.1f} → {artifact['cv']:.1f}", inline=True)
-    embed.add_field(name="Rank", value=rank_msg, inline=False)
+    embed.add_field(
+        name="",  # invisible field name
+        value=(
+            f"CRIT Rate: {old_cr:.1f}% → {crit_rate:.1f}%\n"
+            f"CRIT DMG: {old_cd:.1f}% → {crit_dmg:.1f}%\n"
+            f"**CRIT Value: {old_cv:.1f} → {artifact['cv']:.1f}**"
+        ),
+        inline=False
+    )
+    embed.add_field(
+        name=f"**Rank:** {rank_msg}",
+        value=(""),
+        inline=False
+    )
 
     await interaction.response.send_message(embed=embed)
 
@@ -530,10 +550,20 @@ async def handle_scan(interaction: discord.Interaction, image: discord.Attachmen
     rank_msg = build_rank_message(old_rank, new_rank, was_new_user)
 
     embed = Embed(title="Artifact Scan Result", color=0x1abc9c)
-    embed.description = f"**Rank:** {rank_msg}"
-    embed.add_field(name="CRIT Rate", value=f"{crit_rate:.1f}%", inline=True)
-    embed.add_field(name="CRIT DMG", value=f"{crit_dmg:.1f}%", inline=True)
-    embed.add_field(name="CRIT Value", value=f"{cv:.1f}", inline=True)
+    embed.add_field(
+        name="",  # invisible field name
+        value=(
+            f"CRIT Rate: {crit_rate:.1f}%\n"
+            f"CRIT DMG: {crit_dmg:.1f}%\n"
+            f"**CRIT Value: {cv:.1f}**"
+        ),
+        inline=False
+    )
+    embed.add_field(
+        name=f"**Rank:** {rank_msg}",
+        value=(""),
+        inline=False
+    )
     embed.set_thumbnail(url="attachment://" + image.filename)
 
     await interaction.followup.send(
