@@ -489,7 +489,6 @@ async def handle_scan(interaction: discord.Interaction, image: discord.Attachmen
     embed.add_field(name="CRIT DMG", value=f"{crit_dmg:.1f}%", inline=True)
     embed.add_field(name="CRIT Value", value=f"{cv:.1f}", inline=True)
     embed.set_thumbnail(url="attachment://" + image.filename)
-    embed.set_footer(text="Use /s or /scan to scan artifacts.")
 
     await interaction.followup.send(
         embed=embed,
