@@ -523,9 +523,14 @@ async def leaderboard(interaction: discord.Interaction):
         reverse=True
     )
 
-    lines = ["#  | Name     | Max  | 45+ | 40+", "---+----------+------+-----+----"]
+    lines = [
+        "#  | Name     | Max  | 45+ | 40+",
+        "---+----------+------+-----+----"
+    ]
 
-    for rank, (user_id, user_data) in enumerate(sorted_leaderboard[:MAX_LEADERBOARD_PLAYERS], start=1):
+    for rank, (user_id, user_data) in enumerate(
+        sorted_leaderboard[:MAX_LEADERBOARD_PLAYERS], start=1
+    ):
         member = interaction.guild.get_member(int(user_id))
         if not member:
             try:
@@ -534,15 +539,25 @@ async def leaderboard(interaction: discord.Interaction):
                 member = None
 
         name = get_display_name(user_id, fallback_user=member)
+
+        # Keep original name truncation
         if len(name) > MAX_NAME_LENGTH:
             name = name[:MAX_NAME_LENGTH - 1] + "-"
 
         lines.append(
-            f"{rank:<2} | {name.ljust(MAX_NAME_LENGTH)} | {user_data['max_cv']:<4.1f} | "
-            f"{count_artifacts(user_data['artifacts'], 45):<3} | {count_artifacts(user_data['artifacts'], 40):<3}"
+            f"{rank:<2} | {name.ljust(MAX_NAME_LENGTH)} | "
+            f"{user_data['max_cv']:<4.1f} | "
+            f"{count_artifacts(user_data['artifacts'], 45):<3} | "
+            f"{count_artifacts(user_data['artifacts'], 40):<3}"
         )
 
-    await interaction.response.send_message(f"```\n{chr(10).join(lines)}\n```")
+    embed = discord.Embed(
+        title="CRIT Value Leaderboard",
+        description=f"```\n{chr(10).join(lines)}\n```",
+        color=0x3498db
+    )
+
+    await interaction.response.send_message(embed=embed)
 
 # Run bot
 bot.run(TOKEN)
