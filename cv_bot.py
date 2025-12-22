@@ -561,9 +561,19 @@ async def leaderboard(interaction: discord.Interaction):
         color=0x3498db
     )
 
-    # Set #1 player's profile picture in top-right
-    if top_user_avatar:
-        embed.set_thumbnail(url=top_user_avatar)
+    # Highlight top player using author field (top-left)
+    if sorted_leaderboard:
+        top_user_id, top_user_data = sorted_leaderboard[0]
+        top_member = interaction.guild.get_member(int(top_user_id))
+        if not top_member:
+            try:
+                top_member = await bot.fetch_user(int(top_user_id))
+            except Exception:
+                top_member = None
+
+        top_name = get_display_name(top_user_id, fallback_user=top_member)
+        top_avatar = top_member.display_avatar.url if top_member else None
+        embed.set_author(name=f"Top Player: {top_name}", icon_url=top_avatar)
 
     await interaction.response.send_message(embed=embed)
 
