@@ -268,10 +268,12 @@ async def name(interaction: discord.Interaction, new_name: str):
     ensure_user(user_id)
     data[user_id]["display_name"] = new_name
     save_data(data)
-    await interaction.response.send_message(
-        f"Your leaderboard name is now set to: **{new_name}**",
-        ephemeral=True
+    embed = Embed(
+        title="Leaderboard Name Updated",
+        description=f"Your leaderboard name is now set to **{new_name}**",
+        color=0x1abc9c
     )
+    await interaction.response.send_message(embed=embed, ephemeral=True)
 
 # /submit
 @bot.tree.command(name="submit", description="Submit an artifact (CRIT Rate & CRIT DMG)")
@@ -284,7 +286,12 @@ async def submit(interaction: discord.Interaction, crit_rate: float, crit_dmg: f
     # Validate stats
     crit_rate, crit_dmg, error = validate_artifact_stats(crit_rate, crit_dmg)
     if error:
-        await interaction.response.send_message(f"Invalid artifact stats: {error}", ephemeral=True)
+        embed = Embed(
+            title="Invalid Artifact Stats",
+            description=error,
+            color=0xe74c3c
+        )
+        await interaction.response.send_message(embed=embed, ephemeral=True)
         return
 
     old_rank = get_leaderboard_ranks().get(user_id)
@@ -329,7 +336,12 @@ async def list_artifacts(interaction: discord.Interaction, user_identifier: str 
     artifact_text = "\n".join(lines)
     target_member = interaction.guild.get_member(int(target_user_id))
     display_name = get_display_name(target_user_id, fallback_user=target_member)
-    await interaction.response.send_message(f"Artifacts for **{display_name}**:\n```\n{artifact_text}\n```", ephemeral=True)
+    embed = Embed(
+        title=f"Artifacts for {display_name}",
+        description=f"```\n{artifact_text}\n```",
+        color=0x3498db
+    )
+    await interaction.response.send_message(embed=embed, ephemeral=True)
 
 # /remove
 @bot.tree.command(name="remove", description="Remove a user or a specific artifact")
@@ -340,9 +352,12 @@ async def list_artifacts(interaction: discord.Interaction, user_identifier: str 
 async def remove(interaction: discord.Interaction, user_identifier: str, artifact_index: int = None):
     target_user_id = await resolve_user(interaction, user_identifier)
     if not target_user_id or target_user_id not in data:
-        await interaction.response.send_message(
-            f"User '{user_identifier}' not found in the leaderboard.", ephemeral=True
+        embed = Embed(
+            title="User Not Found",
+            description=f"User '{user_identifier}' not found in the leaderboard.",
+            color=0xe74c3c
         )
+        await interaction.response.send_message(embed=embed, ephemeral=True)
         return
 
     user_data = data[target_user_id]
@@ -350,10 +365,12 @@ async def remove(interaction: discord.Interaction, user_identifier: str, artifac
     if artifact_index is not None:
         artifacts = user_data.get("artifacts", [])
         if artifact_index < 1 or artifact_index > len(artifacts):
-            await interaction.response.send_message(
-                f"Invalid artifact index. Please provide a number between 1 and {len(artifacts)}.",
-                ephemeral=True
+            embed = Embed(
+                title="Invalid Artifact Index",
+                description=f"Please provide a number between 1 and {len(artifacts)}.",
+                color=0xe74c3c
             )
+            await interaction.response.send_message(embed=embed, ephemeral=True)
             return
 
         old_rank = get_leaderboard_ranks().get(target_user_id)
@@ -397,21 +414,33 @@ async def remove(interaction: discord.Interaction, user_identifier: str, artifac
 async def modify(interaction: discord.Interaction, user_identifier: str, artifact_index: int, crit_rate: float, crit_dmg: float):
     target_user_id = await resolve_user(interaction, user_identifier)
     if not target_user_id or target_user_id not in data:
-        await interaction.response.send_message(f"User '{user_identifier}' not found in the leaderboard.", ephemeral=True)
+        embed = Embed(
+            title="User Not Found",
+            description=f"User '{user_identifier}' not found in the leaderboard.",
+            color=0xe74c3c
+        )
+        await interaction.response.send_message(embed=embed, ephemeral=True)
         return
 
     artifacts = data[target_user_id]["artifacts"]
     if artifact_index < 1 or artifact_index > len(artifacts):
-        await interaction.response.send_message(
-            f"Invalid artifact index. Please provide a number between 1 and {len(artifacts)}.",
-            ephemeral=True
+        embed = Embed(
+            title="Invalid Artifact Index",
+            description=f"Please provide a number between 1 and {len(artifacts)}.",
+            color=0xe74c3c
         )
+        await interaction.response.send_message(embed=embed, ephemeral=True)
         return
 
     # Validate new stats
     crit_rate, crit_dmg, error = validate_artifact_stats(crit_rate, crit_dmg)
     if error:
-        await interaction.response.send_message(f"Cannot modify artifact: {error}", ephemeral=True)
+        embed = Embed(
+            title="Invalid Artifact Stats",
+            description=f"Cannot modify artifact: {error}",
+            color=0xe74c3c
+        )
+        await interaction.response.send_message(embed=embed, ephemeral=True)
         return
 
     old_rank = get_leaderboard_ranks().get(target_user_id)
@@ -450,19 +479,23 @@ async def handle_scan(interaction: discord.Interaction, image: discord.Attachmen
         ocr_results = ocr_reader.readtext(img_np)
         ocr_text = "\n".join([text for _, text, _ in ocr_results])
     except Exception as e:
-        await interaction.followup.send(
-            f"OCR failed to process the image.\nError: {str(e)}",
-            ephemeral=True
+        embed = Embed(
+            title="OCR Failed",
+            description=f"OCR failed to process the image.\nError: {str(e)}",
+            color=0xe74c3c
         )
+        await interaction.followup.send(embed=embed, ephemeral=True)
         return
 
     crit_rate, crit_dmg, circlet_detected = parse_artifact_text(ocr_text)
 
     if circlet_detected:
-        await interaction.followup.send(
-            "Circlets are not allowed, sorry!",
-            ephemeral=True
+        embed = Embed(
+            title="Invalid Artifact",
+            description="Circlets are not allowed, sorry!",
+            color=0xe74c3c
         )
+        await interaction.followup.send(embed=embed, ephemeral=True)
         return
 
     crit_rate = crit_rate or 0.0
@@ -509,7 +542,12 @@ async def scan_short(interaction: discord.Interaction, image: discord.Attachment
 @bot.tree.command(name="leaderboard", description="Display the CRIT Value leaderboard publicly")
 async def leaderboard(interaction: discord.Interaction):
     if not data:
-        await interaction.response.send_message("The leaderboard is empty.", ephemeral=True)
+        embed = Embed(
+            title="Leaderboard Empty",
+            description="No artifacts have been submitted yet.",
+            color=0xe74c3c
+        )
+        await interaction.response.send_message(embed=embed)
         return
 
     sorted_leaderboard = sorted(
