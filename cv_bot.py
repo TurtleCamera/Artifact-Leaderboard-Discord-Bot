@@ -632,7 +632,7 @@ async def leaderboard(interaction: discord.Interaction):
                     # Mention the top player's name
                     file = discord.File(output, filename="top_avatar.png")
                     top_name = get_display_name(top_user_member.id, fallback_user=top_user_member)
-                    embed.add_field(name=f"im-sick-of-{top_name}", value="", inline=True)
+                    embed.add_field(name=f"I'm sick of {top_name}.", value="", inline=True)
                     embed.set_image(url="attachment://top_avatar.png")
                     await interaction.response.send_message(embed=embed, file=file)
                     return
