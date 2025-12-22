@@ -619,21 +619,24 @@ async def leaderboard(interaction: discord.Interaction):
         avatar_url = top_user_member.display_avatar.url
         async with aiohttp.ClientSession() as session:
             async with session.get(avatar_url) as resp:
-                if resp.status == MAX_AVATAR_FETCH_SIZE:
+                if resp.status == 200:
                     avatar_bytes = await resp.read()
 
-                    # Resize
+                    # Open image and resize with high-quality resampling
                     img = Image.open(BytesIO(avatar_bytes)).convert("RGBA")
-                    img.thumbnail((AVATAR_DISPLAY_SIZE, AVATAR_DISPLAY_SIZE))
+                    img = img.resize((AVATAR_DISPLAY_SIZE, AVATAR_DISPLAY_SIZE), resample=Image.LANCZOS)
+
+                    # Save to BytesIO for Discord upload
                     output = BytesIO()
                     img.save(output, format="PNG")
                     output.seek(0)
 
-                    # Mention the top player's name
+                    # Prepare file and embed
                     file = discord.File(output, filename="top_avatar.png")
                     top_name = get_display_name(top_user_member.id, fallback_user=top_user_member)
                     embed.add_field(name=f"I'm sick of {top_name}.", value="", inline=True)
                     embed.set_image(url="attachment://top_avatar.png")
+
                     await interaction.response.send_message(embed=embed, file=file)
                     return
 
