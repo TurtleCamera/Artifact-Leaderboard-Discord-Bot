@@ -14,7 +14,7 @@ import aiohttp
 
 # Constants
 MAX_CV = 54.6  # Maximum allowed CRIT Value
-MAX_NAME_LENGTH = 16  # Max name length on leaderboard (longest possible for mobile)
+MAX_NAME_LENGTH = 13  # Max name length on leaderboard (longest possible for mobile)
 MAX_LEADERBOARD_PLAYERS = 25  # Max players to display on leaderboard (Discord's limit)
 MAX_AVATAR_FETCH_SIZE = 200 # Max bytes to fetch at once
 AVATAR_DISPLAY_SIZE = 64    # Resize avatar
@@ -575,8 +575,8 @@ async def leaderboard(interaction: discord.Interaction):
     )
 
     lines = [
-        "# |Name            |Max |45+|40+",
-        "--+----------------+----+---+---"
+        "# |Name         |Max |45+|40+",
+        "--+-------------+----+---+---"
     ]
 
     top_user_member = None
