@@ -15,7 +15,7 @@ import aiohttp
 # Constants
 MAX_CV = 54.6  # Maximum allowed CRIT Value
 MAX_NAME_LENGTH = 13  # Max name length on leaderboard (longest possible for mobile)
-MAX_LEADERBOARD_PLAYERS = 25  # Max players to display on leaderboard (Discord's limit)
+MAX_LEADERBOARD_PLAYERS = 99  # Max players to display on leaderboard
 MAX_AVATAR_FETCH_SIZE = 200 # Max bytes to fetch at once
 AVATAR_DISPLAY_SIZE = 64    # Resize avatar
 DATA_FILE = "data.json"  # Data file
