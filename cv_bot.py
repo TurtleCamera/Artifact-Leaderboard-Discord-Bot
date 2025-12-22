@@ -1,5 +1,6 @@
 from PIL import Image
 import io
+from io import BytesIO
 import unicodedata
 import re
 import discord
@@ -9,11 +10,14 @@ import json
 import os
 import easyocr
 import numpy as np
+import aiohttp
 
 # Constants
 MAX_CV = 54.6  # Maximum allowed CRIT Value
 MAX_NAME_LENGTH = 16  # Max name length on leaderboard (longest possible for mobile)
 MAX_LEADERBOARD_PLAYERS = 25  # Max players to display on leaderboard (Discord's limit)
+MAX_AVATAR_FETCH_SIZE = 200 # Max bytes to fetch at once
+AVATAR_DISPLAY_SIZE = 64    # Resize avatar
 DATA_FILE = "data.json"  # Data file
 LANG_FILE = "languages.json"  # Multilingual mapping
 
@@ -216,6 +220,15 @@ def parse_artifact_text(ocr_text: str):
             crit_rate = value
 
     return crit_rate, crit_dmg, False
+
+# Download profile pictures
+async def fetch_avatar_bytes(url: str) -> BytesIO:
+    async with aiohttp.ClientSession() as session:
+        async with session.get(url) as resp:
+            if resp.status != 200:
+                return None
+            data = await resp.read()
+            return BytesIO(data)
 
 # ----------------- Events -----------------
 
@@ -539,6 +552,7 @@ async def scan_short(interaction: discord.Interaction, image: discord.Attachment
     await handle_scan(interaction, image)
 
 # /leaderboard
+# /leaderboard
 @bot.tree.command(name="leaderboard", description="Display the CRIT Value leaderboard publicly")
 async def leaderboard(interaction: discord.Interaction):
     if not data:
@@ -565,7 +579,7 @@ async def leaderboard(interaction: discord.Interaction):
         "--+----------------+----+---+---"
     ]
 
-    top_user_avatar = None  # store avatar URL for #1
+    top_user_member = None
 
     for rank, (user_id, user_data) in enumerate(
         sorted_leaderboard[:MAX_LEADERBOARD_PLAYERS], start=1
@@ -577,12 +591,11 @@ async def leaderboard(interaction: discord.Interaction):
             except Exception:
                 member = None
 
-        # Save #1 player's avatar
+        # Save #1 player's member object
         if rank == 1 and member:
-            top_user_avatar = member.display_avatar.url
+            top_user_member = member
 
         name = get_display_name(user_id, fallback_user=member)
-
         if len(name) > MAX_NAME_LENGTH:
             name = name[:MAX_NAME_LENGTH - 1] + "-"
 
@@ -593,26 +606,38 @@ async def leaderboard(interaction: discord.Interaction):
             f"{count_artifacts(user_data['artifacts'], 40):<3}"
         )
 
-    embed = discord.Embed(
+    # Build embed with leaderboard text
+    description_text = f"```\n{chr(10).join(lines)}\n```"
+    embed = Embed(
         title="CRIT Value Leaderboard",
-        description=f"```\n{chr(10).join(lines)}\n```",
+        description=description_text,
         color=0x3498db
     )
 
-    # Highlight top player using author field (top-left)
-    if sorted_leaderboard:
-        top_user_id, top_user_data = sorted_leaderboard[0]
-        top_member = interaction.guild.get_member(int(top_user_id))
-        if not top_member:
-            try:
-                top_member = await bot.fetch_user(int(top_user_id))
-            except Exception:
-                top_member = None
+    # If top player exists, attach their avatar at the bottom with a label
+    if top_user_member:
+        avatar_url = top_user_member.display_avatar.url
+        async with aiohttp.ClientSession() as session:
+            async with session.get(avatar_url) as resp:
+                if resp.status == MAX_AVATAR_FETCH_SIZE:
+                    avatar_bytes = await resp.read()
 
-        top_name = get_display_name(top_user_id, fallback_user=top_member)
-        top_avatar = top_member.display_avatar.url if top_member else None
-        embed.set_author(name=f"Top Player: {top_name}", icon_url=top_avatar)
+                    # Resize
+                    img = Image.open(BytesIO(avatar_bytes)).convert("RGBA")
+                    img.thumbnail((AVATAR_DISPLAY_SIZE, AVATAR_DISPLAY_SIZE))
+                    output = BytesIO()
+                    img.save(output, format="PNG")
+                    output.seek(0)
 
+                    # Mention the top player's name
+                    file = discord.File(output, filename="top_avatar.png")
+                    top_name = get_display_name(top_user_member.id, fallback_user=top_user_member)
+                    embed.add_field(name=f"Top Player: {top_name}", value="", inline=True)
+                    embed.set_image(url="attachment://top_avatar.png")
+                    await interaction.response.send_message(embed=embed, file=file)
+                    return
+
+    # Fallback: send embed without image
     await interaction.response.send_message(embed=embed)
 
 # Run bot
