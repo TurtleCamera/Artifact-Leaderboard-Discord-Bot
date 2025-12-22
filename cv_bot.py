@@ -528,6 +528,8 @@ async def leaderboard(interaction: discord.Interaction):
         "---+----------+------+-----+----"
     ]
 
+    top_user_avatar = None  # store avatar URL for #1
+
     for rank, (user_id, user_data) in enumerate(
         sorted_leaderboard[:MAX_LEADERBOARD_PLAYERS], start=1
     ):
@@ -538,9 +540,12 @@ async def leaderboard(interaction: discord.Interaction):
             except Exception:
                 member = None
 
+        # Save #1 player's avatar
+        if rank == 1 and member:
+            top_user_avatar = member.display_avatar.url
+
         name = get_display_name(user_id, fallback_user=member)
 
-        # Keep original name truncation
         if len(name) > MAX_NAME_LENGTH:
             name = name[:MAX_NAME_LENGTH - 1] + "-"
 
@@ -556,6 +561,10 @@ async def leaderboard(interaction: discord.Interaction):
         description=f"```\n{chr(10).join(lines)}\n```",
         color=0x3498db
     )
+
+    # Set #1 player's profile picture in top-right
+    if top_user_avatar:
+        embed.set_thumbnail(url=top_user_avatar)
 
     await interaction.response.send_message(embed=embed)
 
