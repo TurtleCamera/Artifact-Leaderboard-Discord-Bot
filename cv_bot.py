@@ -12,7 +12,7 @@ import numpy as np
 
 # Constants
 MAX_CV = 54.6  # Maximum allowed CRIT Value
-MAX_NAME_LENGTH = 8  # Max name length on leaderboard (longest possible for mobile)
+MAX_NAME_LENGTH = 16  # Max name length on leaderboard (longest possible for mobile)
 MAX_LEADERBOARD_PLAYERS = 25  # Max players to display on leaderboard (Discord's limit)
 DATA_FILE = "data.json"  # Data file
 LANG_FILE = "languages.json"  # Multilingual mapping
@@ -523,8 +523,8 @@ async def leaderboard(interaction: discord.Interaction):
     )
 
     lines = [
-        "#  | Name     | Max  | 45+ | 40+",
-        "---+----------+------+-----+----"
+        "# |Name            |Max |45+|40+",
+        "--+----------------+----+---+---"
     ]
 
     top_user_avatar = None  # store avatar URL for #1
@@ -549,9 +549,9 @@ async def leaderboard(interaction: discord.Interaction):
             name = name[:MAX_NAME_LENGTH - 1] + "-"
 
         lines.append(
-            f"{rank:<2} | {name.ljust(MAX_NAME_LENGTH)} | "
-            f"{user_data['max_cv']:<4.1f} | "
-            f"{count_artifacts(user_data['artifacts'], 45):<3} | "
+            f"{rank:<2}|{name.ljust(MAX_NAME_LENGTH)}|"
+            f"{user_data['max_cv']:<2.1f}|"
+            f"{count_artifacts(user_data['artifacts'], 45):<3}|"
             f"{count_artifacts(user_data['artifacts'], 40):<3}"
         )
 
