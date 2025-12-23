@@ -4,13 +4,51 @@ A Discord bot that allows users to submit and track Genshin Impact artifact stat
 
 ---
 
+## Installation
+
+1. **Install Python 3.11**
+   EasyOCR requires Python 3.11. Download here:
+   [https://www.python.org/downloads/release/python-311/](https://www.python.org/downloads/release/python-311/)
+
+2. **(Optional) Create a virtual environment**
+
+```bash
+python -m venv venv
+# Windows
+venv\Scripts\activate
+# macOS/Linux
+source venv/bin/activate
+```
+
+3. **Install dependencies**
+
+```bash
+pip install discord.py aiohttp pillow numpy easyocr
+```
+
+* `discord.py` → Discord API & slash commands
+* `aiohttp` → Async HTTP requests (avatars, images)
+* `pillow` → Image handling & resizing
+* `numpy` → Image array processing for OCR
+* `easyocr` → OCR for scanning artifact screenshots
+
+4. **Run the bot**
+
+```bash
+python bot.py
+```
+
+> EasyOCR will work without a GPU, but scans are faster with one.
+
+---
+
 ## Commands
 
-> **Command syntax:**
->
-> * All **base commands** are **slash commands** (e.g., `/submit`).
-> * Everything in `[ ]` is a **literal**.
-> * Everything in `< >` is a **non-literal argument**.
+**Command syntax:**
+
+* All **base commands** are **slash commands** (e.g., `/submit`).
+* Everything in `[ ]` is a **literal**.
+* Everything in `< >` is a **non-literal argument**.
 
 ---
 
