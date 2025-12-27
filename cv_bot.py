@@ -576,7 +576,7 @@ async def handle_scan(interaction: discord.Interaction, image: discord.Attachmen
 async def scan(interaction: discord.Interaction, image: discord.Attachment):
     await handle_scan(interaction, image)
 
-@bot.tree.command(name="s", description="Shortcut for /scan")
+@bot.tree.command(name="sc", description="Shortcut for /scan")
 @app_commands.describe(image="Upload a screenshot of your artifact")
 async def scan_short(interaction: discord.Interaction, image: discord.Attachment):
     await handle_scan(interaction, image)
