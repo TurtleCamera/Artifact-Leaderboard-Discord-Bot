@@ -8,8 +8,6 @@ from discord.ext import commands
 from discord import app_commands, Embed
 import json
 import os
-import easyocr
-import numpy as np
 import aiohttp
 
 # Constants
@@ -76,9 +74,6 @@ ocr_languages = list(languages.keys())
 chinese_keys = {"ch_sim", "ch_tra"}
 if any(l in chinese_keys for l in ocr_languages) and "en" not in ocr_languages:
     ocr_languages.append("en")  # always include English
-
-# Initialize OCR reader
-ocr_reader = easyocr.Reader(ocr_languages)
 
 # ----------------- Helper Functions -----------------
 
