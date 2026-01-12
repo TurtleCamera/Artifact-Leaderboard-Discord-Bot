@@ -20,6 +20,7 @@ MAX_AVATAR_FETCH_SIZE = 200 # Max bytes to fetch at once
 AVATAR_DISPLAY_SIZE = 64    # Resize avatar
 DATA_FILE = "data.json"  # Data file
 LANG_FILE = "languages.json"  # Multilingual mapping
+EASYOCR_API_URL = "https://api.easyocr.org/ocr"
 
 # Setup intents
 intents = discord.Intents.default()
@@ -220,6 +221,27 @@ def parse_artifact_text(ocr_text: str):
             crit_rate = value
 
     return crit_rate, crit_dmg, False
+
+# Send image to EasyOCR online and return the recognized text as a string.
+async def online_easyocr(image_bytes: bytes, languages: list = None):
+    languages = languages or ["en"]
+    lang_str = ",".join(languages)
+
+    data = aiohttp.FormData()
+    data.add_field("file", image_bytes, filename="image.png", content_type="image/png")
+    data.add_field("lang", lang_str)
+
+    async with aiohttp.ClientSession() as session:
+        async with session.post(EASYOCR_API_URL, data=data) as resp:
+            if resp.status != 200:
+                text = await resp.text()
+                raise Exception(f"OCR API failed: {resp.status}, {text}")
+            result_json = await resp.json()
+
+    # Convert JSON 'words' array into plain text lines
+    words = result_json.get("words", [])
+    text_lines = [word["text"] for word in words]
+    return "\n".join(text_lines)
 
 # Download profile pictures
 async def fetch_avatar_bytes(url: str) -> BytesIO:
@@ -507,10 +529,15 @@ async def handle_scan(interaction: discord.Interaction, image: discord.Attachmen
 
     try:
         image_bytes = await image.read()
+        # Convert to RGB to ensure format compatibility
         img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
-        img_np = np.array(img)
-        ocr_results = ocr_reader.readtext(img_np)
-        ocr_text = "\n".join([text for _, text, _ in ocr_results])
+        output_bytes = BytesIO()
+        img.save(output_bytes, format="PNG")
+        output_bytes.seek(0)
+
+        # Call online EasyOCR
+        ocr_text = await online_easyocr(output_bytes.getvalue(), languages=ocr_languages)
+
     except Exception as e:
         embed = Embed(
             title="OCR Failed",
@@ -533,13 +560,11 @@ async def handle_scan(interaction: discord.Interaction, image: discord.Attachmen
 
     crit_rate = crit_rate or 0.0
     crit_dmg = crit_dmg or 0.0
-
     crit_rate, crit_dmg, error = validate_artifact_stats(crit_rate, crit_dmg)
     if error:
         crit_rate = crit_dmg = 0.0
 
     cv = calculate_cv(crit_rate, crit_dmg)
-
     artifact = {"crit_rate": crit_rate, "crit_dmg": crit_dmg, "cv": cv}
     data[user_id]["artifacts"].append(artifact)
     data[user_id]["max_cv"] = max(data[user_id]["max_cv"], cv)
@@ -551,19 +576,13 @@ async def handle_scan(interaction: discord.Interaction, image: discord.Attachmen
 
     embed = Embed(title="Artifact Scan Result", color=0x1abc9c)
     embed.add_field(
-        name="",  # invisible field name
-        value=(
+        name="", value=(
             f"CRIT Rate: {crit_rate:.1f}%\n"
             f"CRIT DMG: {crit_dmg:.1f}%\n"
             f"**CRIT Value: {cv:.1f}**"
-        ),
-        inline=False
+        ), inline=False
     )
-    embed.add_field(
-        name=f"**Rank:** {rank_msg}",
-        value=(""),
-        inline=False
-    )
+    embed.add_field(name=f"**Rank:** {rank_msg}", value="", inline=False)
     embed.set_thumbnail(url="attachment://" + image.filename)
 
     await interaction.followup.send(
