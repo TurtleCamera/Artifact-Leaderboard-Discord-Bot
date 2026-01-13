@@ -107,11 +107,8 @@ def count_artifacts(artifacts, threshold):
 def calculate_cv(crit_rate: float, crit_dmg: float):
     return crit_rate * 2 + crit_dmg
 
+# Validate CRIT Rate and CRIT DMG. Returns sanitized values and an error message if invalid.
 def validate_artifact_stats(crit_rate: float, crit_dmg: float) -> (float, float, str):
-    """
-    Validate CRIT Rate and CRIT DMG.
-    Returns sanitized values and an error message if invalid.
-    """
     # Negative values are invalid
     if crit_rate < 0 or crit_dmg < 0:
         return 0, 0, "CRIT Rate and CRIT DMG cannot be negative."
@@ -598,10 +595,17 @@ async def handle_scan(interaction: discord.Interaction, image: discord.Attachmen
     result_embed.add_field(name=f"**Rank:** {rank_msg}", value="", inline=False)
     result_embed.set_thumbnail(url="attachment://" + image.filename)
 
-    await interaction.edit_original_response(
-        embed=result_embed,
-        attachments=[discord.File(io.BytesIO(image_bytes), filename=image.filename)]
-    )
+    try:
+        await interaction.edit_original_response(
+            embed=result_embed,
+            attachments=[discord.File(io.BytesIO(image_bytes), filename=image.filename)]
+        )
+    except Exception as e:
+        # Fallback if the screenshot failed to send
+        result_embed.set_footer(text="Screenshot could not be attached because it was too large for Discord.")
+        await interaction.edit_original_response(
+            embed=result_embed
+        )
 
 @bot.tree.command(name="scan", description="Scan an artifact screenshot")
 @app_commands.describe(image="Upload a screenshot of your artifact")
