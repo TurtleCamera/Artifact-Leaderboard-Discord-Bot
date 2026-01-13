@@ -27,7 +27,11 @@ intents.message_content = True  # optional for future features
 intents.members = True  # Required to fetch guild members
 
 # Create bot
-bot = commands.Bot(command_prefix=None, intents=intents)
+# Can't use command_prefix=None because it must have a valid prefix
+bot = commands.Bot(
+    command_prefix="THIS_PREFIX_WILL_NEVER_BE_TYPED_BY_A_HUMAN_1234567890",
+    intents=intents
+)
 
 # Load token
 with open("token", "r") as f:
