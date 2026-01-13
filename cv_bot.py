@@ -519,18 +519,24 @@ async def modify(interaction: discord.Interaction, user_identifier: str, artifac
 
 # /scan command
 async def handle_scan(interaction: discord.Interaction, image: discord.Attachment):
-    await interaction.response.defer()
     user_id = str(interaction.user.id)
     was_new_user = user_id not in data
     ensure_user(user_id)
 
-    # Get user's preferred OCR language or default to "en"
     user_lang = data[user_id].get("language", "en")
     ocr_langs_to_use = [user_lang]
 
-    # Some languages require English (e.g., Chinese)
+    # Always include English for fallback
     if "en" not in ocr_langs_to_use:
         ocr_langs_to_use.append("en")
+
+    # Send a "processing" embed
+    processing_embed = Embed(
+        title="Scanning Artifact...",
+        description=f"OCR is running using languages: {', '.join(ocr_langs_to_use)}",
+        color=0x3498db
+    )
+    await interaction.response.send_message(embed=processing_embed)
 
     try:
         image_bytes = await image.read()
@@ -542,55 +548,59 @@ async def handle_scan(interaction: discord.Interaction, image: discord.Attachmen
         ocr_text = await online_easyocr(output_bytes.getvalue(), languages=ocr_langs_to_use)
 
     except Exception as e:
-        embed = Embed(
+        error_embed = Embed(
             title="OCR Failed",
-            description=f"OCR failed to process the image.\nError: {str(e)}",
+            description=f"OCR failed to process the image.",
             color=0xe74c3c
         )
-        await interaction.followup.send(embed=embed, ephemeral=True)
+        await interaction.edit_original_response(embed=error_embed)
         return
 
     crit_rate, crit_dmg, circlet_detected = parse_artifact_text(ocr_text)
 
+    # Circlets aren't allowed
     if circlet_detected:
-        embed = Embed(
+        circlet_embed = Embed(
             title="Invalid Artifact",
             description="Circlets are not allowed, sorry!",
             color=0xe74c3c
         )
-        await interaction.followup.send(embed=embed, ephemeral=True)
+        await interaction.edit_original_response(embed=circlet_embed)
         return
 
+    # Validate artifact
     crit_rate = crit_rate or 0.0
     crit_dmg = crit_dmg or 0.0
     crit_rate, crit_dmg, error = validate_artifact_stats(crit_rate, crit_dmg)
     if error:
         crit_rate = crit_dmg = 0.0
 
+    # Calcualte CV and store artifact
     cv = calculate_cv(crit_rate, crit_dmg)
     artifact = {"crit_rate": crit_rate, "crit_dmg": crit_dmg, "cv": cv}
     data[user_id]["artifacts"].append(artifact)
     data[user_id]["max_cv"] = max(data[user_id]["max_cv"], cv)
     save_data(data)
 
+    # Update user's rank
     old_rank = get_leaderboard_ranks().get(user_id)
     new_rank = get_leaderboard_ranks().get(user_id)
     rank_msg = build_rank_message(old_rank, new_rank, was_new_user)
 
-    embed = Embed(title="Artifact Scan Result", color=0x1abc9c)
-    embed.add_field(
+    result_embed = Embed(title="Artifact Scan Result", color=0x1abc9c)
+    result_embed.add_field(
         name="", value=(
             f"CRIT Rate: {crit_rate:.1f}%\n"
             f"CRIT DMG: {crit_dmg:.1f}%\n"
             f"**CRIT Value: {cv:.1f}**"
         ), inline=False
     )
-    embed.add_field(name=f"**Rank:** {rank_msg}", value="", inline=False)
-    embed.set_thumbnail(url="attachment://" + image.filename)
+    result_embed.add_field(name=f"**Rank:** {rank_msg}", value="", inline=False)
+    result_embed.set_thumbnail(url="attachment://" + image.filename)
 
-    await interaction.followup.send(
-        embed=embed,
-        file=discord.File(io.BytesIO(image_bytes), filename=image.filename)
+    await interaction.edit_original_response(
+        embed=result_embed,
+        attachments=[discord.File(io.BytesIO(image_bytes), filename=image.filename)]
     )
 
 @bot.tree.command(name="scan", description="Scan an artifact screenshot")
