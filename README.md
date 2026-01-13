@@ -12,14 +12,13 @@ A Discord bot that allows users to submit and track Genshin Impact artifact stat
 2. **Install dependencies**
 
 ```bash
-pip install discord.py aiohttp pillow numpy easyocr
+pip install discord.py aiohttp pillow
 ```
 
 * `discord.py` → Discord API & slash commands
 * `aiohttp` → Async HTTP requests (avatars, images, OCR API)
 * `pillow` → Image handling & resizing
 * `numpy` → Image array processing for OCR
-* `easyocr` → OCR backend (via EasyOCR API)
 
 3. **Run the bot**
 
