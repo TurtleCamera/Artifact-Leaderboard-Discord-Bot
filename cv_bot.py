@@ -602,7 +602,7 @@ async def handle_scan(interaction: discord.Interaction, image: discord.Attachmen
         )
     except Exception as e:
         # Fallback if the screenshot failed to send
-        result_embed.set_footer(text="Screenshot could not be attached because it was too large for Discord.")
+        result_embed.set_footer(text="Screenshot could not be attached because it took too long to send to Discord.")
         await interaction.edit_original_response(
             embed=result_embed
         )
