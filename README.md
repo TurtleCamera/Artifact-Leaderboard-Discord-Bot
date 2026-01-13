@@ -17,10 +17,10 @@ pip install discord.py aiohttp pillow numpy easyocr
 ```
 
 * `discord.py` → Discord API & slash commands
-* `aiohttp` → Async HTTP requests (avatars, images)
+* `aiohttp` → Async HTTP requests (avatars, images, OCR API)
 * `pillow` → Image handling & resizing
 * `numpy` → Image array processing for OCR
-* `easyocr` → OCR for scanning artifact screenshots
+* `easyocr` → OCR backend (via EasyOCR API)
 
 3. **Run the bot**
 
@@ -28,8 +28,8 @@ pip install discord.py aiohttp pillow numpy easyocr
 python cv_bot.py
 ```
 
-> EasyOCR will work without a GPU, but scans are faster with one.  
-> If you have an NVIDIA GPU with CUDA, EasyOCR will automatically use it for faster processing.
+> The bot uses the **EasyOCR online API**.
+> A GPU is not required locally, but OCR speed depends on the API response time.
 
 ---
 
@@ -43,18 +43,12 @@ python cv_bot.py
 
 ---
 
-### `/help`
-
-Displays the list of available commands and their descriptions.
-
----
-
 ### `/name <new_name>`
 
 Sets your display name on the leaderboard.
 
 * If no display name is set, your Discord name is used as a fallback.
-* Max name length is **8 characters** for mobile readability.
+* Names are truncated on the leaderboard for mobile readability.
 
 ---
 
@@ -78,13 +72,14 @@ CV = CRIT Rate * 2 + CRIT DMG
 
 Scan an artifact screenshot and automatically extract CRIT Rate & CRIT DMG using OCR.
 
-* Supports multiple languages (based on `languages.json`), including English and Simplified Chinese.
+* Uses the **EasyOCR online API**.
+* Supports multiple languages loaded from `languages.json`.
+* Each user can select their OCR language via `/language`.
 * Circlets are automatically rejected.
 * If a stat is missing in the screenshot, it is **assumed to be `0`**.
-* Negative values or impossible stats are automatically adjusted to `0` for CV calculation.
-* **Note:** EasyOCR works faster with a GPU. If no GPU is available, scans may take longer.
+* Negative values or impossible stats are clamped to `0`.
 
-Example:
+Example `languages.json` entry:
 
 ```json
 "ch_sim": {
@@ -93,6 +88,16 @@ Example:
   "circlet": ["理之冠"]
 }
 ```
+
+---
+
+### `/language <language_code>`
+
+Sets your personal OCR language.
+
+* The list of valid codes is loaded dynamically from `languages.json`.
+* The first language in `languages.json` is used as the default.
+* If a user's language becomes invalid, it is automatically set to the default.
 
 ---
 
@@ -111,7 +116,6 @@ Remove a user or a specific artifact.
 
 * If `artifact_index` is omitted, removes all artifacts and the user from the leaderboard.
 * Otherwise, removes the specified artifact.
-* Ranks are automatically updated after removal.
 
 ---
 
@@ -121,42 +125,67 @@ Modify an existing artifact.
 
 * Updates CRIT Rate, CRIT DMG, and recalculates CRIT Value.
 * Negative or CRIT Value > 54.6 are **rejected**.
-* Ranks are automatically updated based on the new values.
 
 ---
 
 ### `/leaderboard`
 
-Displays the top artifacts by CRIT Value.
+Displays the CRIT Value leaderboard.
 
-* Shows **max CRIT Value**, number of artifacts ≥ 45 CRIT Value, and number ≥ 40 CRIT Value.
-* Maximum of 25 users displayed.
-* Names truncated to **8 characters** for mobile readability.
+* Ranking is based on:
+
+  1. **Max CRIT Value**
+  2. **Number of artifacts ≥ 45 CV**
+  3. **Number of artifacts ≥ 40 CV**
+* Shows **max CRIT Value**, **45+ count**, and **40+ count**.
+* Displays up to **99 players**.
+* Names are truncated for mobile readability.
+* The #1 player’s avatar is shown at the bottom of the embed.
 
 ---
 
 ## Artifact Rules
 
-* Only **CRIT Rate** and **CRIT DMG** are considered for CRIT Value.
+* Only **CRIT Rate** and **CRIT DMG** are used for CRIT Value.
 * Circlets are **not allowed**.
-* CRIT Value is automatically calculated for all submissions.
+* CRIT Value is computed as **(2 × CRIT Rate) + CRIT DMG**.
 * Negative or CRIT Value > 54.6 are **not allowed**.
-* Values are stored persistently in `data.json`.
+* Data is stored persistently in `data.json`.
 
 ---
 
 ## OCR & Multilingual Support
 
-* Uses **EasyOCR** for artifact screenshot scanning.
-* Automatically loads languages from `languages.json`.
-* Chinese OCR (`ch_sim` or `ch_tra`) **requires English** to be included.
-* New languages can be added dynamically by adding a new key in `languages.json` with the fields:
+* OCR languages are loaded dynamically from `languages.json`.
+* Each language entry defines:
 
   * `crit_rate`
   * `crit_dmg`
   * `circlet`
-* The bot assumes **0** for any missing or invalid stat in a screenshot.
-* **Note:** EasyOCR works faster with a GPU. Without a GPU, scans may take longer.
+* If Chinese (`ch_sim` or `ch_tra`) is present, **English is automatically added** for OCR compatibility.
+* Each user selects their OCR language with `/language`.
+* Missing or invalid OCR values are treated as **0**.
+
+---
+
+## Leaderboard Caching System
+
+The bot uses **precomputed and incremental caching** for performance.
+
+On startup:
+
+* Max CRIT Value
+* 45+ CV count
+* 40+ CV count
+
+are computed for every user.
+
+On `/submit`, `/scan`, `/modify`, and `/remove`:
+
+* Only the affected user’s cached stats are updated.
+* The leaderboard never requires a full recomputation.
+
+This makes the bot fast even with large datasets.
 
 ---
 
@@ -164,13 +193,13 @@ Displays the top artifacts by CRIT Value.
 
 ```plaintext
 /name jyov
+/language ch_sim
 /submit 14.0 22.5
 /scan artifact_screenshot.png
 /list
 /modify jyov 1 10.9 29.5
 /remove jyov 1
 /leaderboard
-/help
 ```
 
 ---
