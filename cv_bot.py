@@ -267,7 +267,6 @@ async def fetch_avatar_bytes(url: str) -> BytesIO:
 @bot.event
 async def on_ready():
     print(f"Logged in as {bot.user} (ID: {bot.user.id})")
-    print("------")
 
     # Backfill missing usernames in data.json
     data_changed = False
@@ -280,9 +279,21 @@ async def on_ready():
                     data_changed = True
             except Exception:
                 continue
+
+    # Determine default language as the first entry in languages.json
+    default_language = next(iter(languages.keys()))
+    print(f"Default language set to '{default_language}'.")
+
+    # Validate user languages
+    for user_id, user_data in data.items():
+        user_lang = user_data.get("language", default_language)
+        if user_lang not in languages:
+            print(f"User {user_id} had invalid language '{user_lang}', resetting to '{default_language}'.")
+            data[user_id]["language"] = default_language
+            data_changed = True
+            
     if data_changed:
         save_data(data)
-        print("Backfilled missing usernames in data.json")
 
     # Try to load guild ID and sync commands, but don't crash if invalid
     try:
