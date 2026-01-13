@@ -6,8 +6,7 @@ A Discord bot that allows users to submit and track Genshin Impact artifact stat
 
 ## Installation
 
-1. **Install Python**
-   Download the latest version here:
+1. **Install Python**:
    [https://www.python.org/downloads/](https://www.python.org/downloads/)
 
 2. **Install dependencies**
