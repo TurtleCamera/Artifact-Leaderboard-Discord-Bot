@@ -27,7 +27,7 @@ intents.message_content = True  # optional for future features
 intents.members = True  # Required to fetch guild members
 
 # Create bot
-bot = commands.Bot(command_prefix="!", intents=intents)
+bot = commands.Bot(command_prefix=None, intents=intents)
 
 # Load token
 with open("token", "r") as f:
@@ -44,7 +44,21 @@ def save_data(data):
     with open(DATA_FILE, "w") as f:
         json.dump(data, f, indent=4)
 
+# Precompute stats on startup
+def initialize_leaderboard_stats():
+    for user_id, user_data in data.items():
+        artifacts = user_data.get("artifacts", [])
+        if artifacts:
+            user_data["max_cv"] = max(arti["cv"] for arti in artifacts)
+            user_data["count_45"] = sum(1 for arti in artifacts if arti["cv"] >= 45)
+            user_data["count_40"] = sum(1 for arti in artifacts if arti["cv"] >= 40)
+        else:
+            user_data["max_cv"] = 0
+            user_data["count_45"] = 0
+            user_data["count_40"] = 0
+
 data = load_data()
+initialize_leaderboard_stats()
 
 # Load language mappings
 def load_languages():
@@ -86,6 +100,8 @@ def ensure_user(user_id: str, user: discord.User = None):
             "username": user.name if user else None,
             "artifacts": [],
             "max_cv": 0,
+            "count_45": 0,   # Number of artifacts ≥ 45 CV
+            "count_40": 0,   # Number of artifacts ≥ 40 CV
             "language": "en"  # default language
         }
 
@@ -328,7 +344,15 @@ async def submit(interaction: discord.Interaction, crit_rate: float, crit_dmg: f
 
     artifact = {"crit_rate": crit_rate, "crit_dmg": crit_dmg, "cv": cv}
     data[user_id]["artifacts"].append(artifact)
-    data[user_id]["max_cv"] = max(data[user_id]["max_cv"], cv)
+
+    # Incremental update
+    if cv > data[user_id]["max_cv"]:
+        data[user_id]["max_cv"] = cv
+    if cv >= 45:
+        data[user_id]["count_45"] += 1
+    if cv >= 40:
+        data[user_id]["count_40"] += 1
+
     save_data(data)
 
     new_rank = get_leaderboard_ranks().get(user_id)
@@ -336,7 +360,7 @@ async def submit(interaction: discord.Interaction, crit_rate: float, crit_dmg: f
 
     embed = Embed(title="Artifact Submitted", color=0x1abc9c)
     embed.add_field(
-        name="",  # invisible field name
+        name="",  
         value=(
             f"CRIT Rate: {crit_rate:.1f}%\n"
             f"CRIT DMG: {crit_dmg:.1f}%\n"
@@ -344,13 +368,8 @@ async def submit(interaction: discord.Interaction, crit_rate: float, crit_dmg: f
         ),
         inline=False
     )
-    embed.add_field(
-        name=f"**Rank:** {rank_msg}",
-        value=(""),
-        inline=False
-    )
+    embed.add_field(name=f"**Rank:** {rank_msg}", value="", inline=False)
     embed.set_author(name=interaction.user.display_name, icon_url=interaction.user.display_avatar.url)
-
     await interaction.response.send_message(embed=embed)
 
 # /list
@@ -391,11 +410,7 @@ async def list_artifacts(interaction: discord.Interaction, user_identifier: str 
 async def remove(interaction: discord.Interaction, user_identifier: str, artifact_index: int = None):
     target_user_id = await resolve_user(interaction, user_identifier)
     if not target_user_id or target_user_id not in data:
-        embed = Embed(
-            title="User Not Found",
-            description=f"User '{user_identifier}' not found in the leaderboard.",
-            color=0xe74c3c
-        )
+        embed = Embed(title="User Not Found", description=f"User '{user_identifier}' not found.", color=0xe74c3c)
         await interaction.response.send_message(embed=embed, ephemeral=True)
         return
 
@@ -404,42 +419,44 @@ async def remove(interaction: discord.Interaction, user_identifier: str, artifac
     if artifact_index is not None:
         artifacts = user_data.get("artifacts", [])
         if artifact_index < 1 or artifact_index > len(artifacts):
-            embed = Embed(
-                title="Invalid Artifact Index",
-                description=f"Please provide a number between 1 and {len(artifacts)}.",
-                color=0xe74c3c
-            )
+            embed = Embed(title="Invalid Artifact Index", description=f"Enter a number between 1 and {len(artifacts)}.", color=0xe74c3c)
             await interaction.response.send_message(embed=embed, ephemeral=True)
             return
 
         old_rank = get_leaderboard_ranks().get(target_user_id)
-
         removed = artifacts.pop(artifact_index - 1)
-        user_data["max_cv"] = max((arti["cv"] for arti in artifacts), default=0)
+
+        # Update incremental counts
+        if removed["cv"] >= 45:
+            user_data["count_45"] -= 1
+        if removed["cv"] >= 40:
+            user_data["count_40"] -= 1
+
+        # Recalculate max_cv if necessary
+        if removed["cv"] == user_data["max_cv"]:
+            user_data["max_cv"] = max((a["cv"] for a in artifacts), default=0)
+
         save_data(data)
 
         new_rank = get_leaderboard_ranks().get(target_user_id)
         rank_msg = build_rank_message(old_rank, new_rank)
+        display_name = get_display_name(target_user_id, fallback_user=interaction.user)
 
-        target_member = interaction.guild.get_member(int(target_user_id))
-        display_name = get_display_name(target_user_id, fallback_user=target_member)
-
-        embed = discord.Embed(title="Artifact Removed", color=0xe74c3c)
+        embed = Embed(title="Artifact Removed", color=0xe74c3c)
         embed.description = f"Removed artifact #{artifact_index} for **{display_name}**."
         embed.add_field(name="Rank", value=rank_msg, inline=False)
-
         await interaction.response.send_message(embed=embed)
         return
 
+    # Remove entire user
     old_rank = get_leaderboard_ranks().get(target_user_id)
-    removed_name = get_display_name(target_user_id, fallback_user=interaction.guild.get_member(int(target_user_id)))
+    removed_name = get_display_name(target_user_id, fallback_user=interaction.user)
     data.pop(target_user_id)
     save_data(data)
 
-    embed = discord.Embed(title="User Removed", color=0xe74c3c)
-    embed.description = f"Removed **{removed_name}** and all of their artifacts from the leaderboard."
+    embed = Embed(title="User Removed", color=0xe74c3c)
+    embed.description = f"Removed **{removed_name}** and all their artifacts."
     embed.add_field(name="Previous Rank", value=f"#{old_rank}", inline=False)
-
     await interaction.response.send_message(embed=embed)
 
 # /modify
@@ -453,68 +470,69 @@ async def remove(interaction: discord.Interaction, user_identifier: str, artifac
 async def modify(interaction: discord.Interaction, user_identifier: str, artifact_index: int, crit_rate: float, crit_dmg: float):
     target_user_id = await resolve_user(interaction, user_identifier)
     if not target_user_id or target_user_id not in data:
-        embed = Embed(
-            title="User Not Found",
-            description=f"User '{user_identifier}' not found in the leaderboard.",
-            color=0xe74c3c
-        )
+        embed = Embed(title="User Not Found", description=f"User '{user_identifier}' not found.", color=0xe74c3c)
         await interaction.response.send_message(embed=embed, ephemeral=True)
         return
 
     artifacts = data[target_user_id]["artifacts"]
     if artifact_index < 1 or artifact_index > len(artifacts):
-        embed = Embed(
-            title="Invalid Artifact Index",
-            description=f"Please provide a number between 1 and {len(artifacts)}.",
-            color=0xe74c3c
-        )
+        embed = Embed(title="Invalid Artifact Index", description=f"Enter a number between 1 and {len(artifacts)}.", color=0xe74c3c)
         await interaction.response.send_message(embed=embed, ephemeral=True)
         return
 
-    # Validate new stats
     crit_rate, crit_dmg, error = validate_artifact_stats(crit_rate, crit_dmg)
     if error:
-        embed = Embed(
-            title="Invalid Artifact Stats",
-            description=f"Cannot modify artifact: {error}",
-            color=0xe74c3c
-        )
+        embed = Embed(title="Invalid Artifact Stats", description=error, color=0xe74c3c)
         await interaction.response.send_message(embed=embed, ephemeral=True)
         return
 
     old_rank = get_leaderboard_ranks().get(target_user_id)
     artifact = artifacts[artifact_index - 1]
-    old_cv, old_cr, old_cd = artifact["cv"], artifact["crit_rate"], artifact["crit_dmg"]
+    old_cv = artifact["cv"]
 
-    artifact["crit_rate"], artifact["crit_dmg"], artifact["cv"] = crit_rate, crit_dmg, calculate_cv(crit_rate, crit_dmg)
-    data[target_user_id]["max_cv"] = max((arti["cv"] for arti in artifacts), default=0)
+    # Remove old counts
+    if old_cv >= 45:
+        data[target_user_id]["count_45"] -= 1
+    if old_cv >= 40:
+        data[target_user_id]["count_40"] -= 1
+
+    artifact["crit_rate"] = crit_rate
+    artifact["crit_dmg"] = crit_dmg
+    artifact["cv"] = calculate_cv(crit_rate, crit_dmg)
+
+    # Add new counts
+    if artifact["cv"] >= 45:
+        data[target_user_id]["count_45"] += 1
+    if artifact["cv"] >= 40:
+        data[target_user_id]["count_40"] += 1
+
+    # Update max_cv if needed
+    if artifact["cv"] > data[target_user_id]["max_cv"]:
+        data[target_user_id]["max_cv"] = artifact["cv"]
+    elif old_cv == data[target_user_id]["max_cv"]:
+        data[target_user_id]["max_cv"] = max((a["cv"] for a in artifacts), default=0)
+
     save_data(data)
 
     new_rank = get_leaderboard_ranks().get(target_user_id)
     rank_msg = build_rank_message(old_rank, new_rank)
-    target_member = interaction.guild.get_member(int(target_user_id))
-    display_name = get_display_name(target_user_id, fallback_user=target_member)
+    display_name = get_display_name(target_user_id, fallback_user=interaction.user)
 
-    embed = discord.Embed(title=f"Artifact #{artifact_index} Modified", color=0xf1c40f)
+    embed = Embed(title=f"Artifact #{artifact_index} Modified", color=0xf1c40f)
     embed.set_author(name=display_name)
     embed.add_field(
-        name="",  # invisible field name
+        name="",
         value=(
-            f"CRIT Rate: {old_cr:.1f}% → {crit_rate:.1f}%\n"
-            f"CRIT DMG: {old_cd:.1f}% → {crit_dmg:.1f}%\n"
+            f"CRIT Rate: {old_cv:.1f} → {crit_rate:.1f}\n"
+            f"CRIT DMG: {old_cv:.1f} → {crit_dmg:.1f}\n"
             f"**CRIT Value: {old_cv:.1f} → {artifact['cv']:.1f}**"
         ),
         inline=False
     )
-    embed.add_field(
-        name=f"**Rank:** {rank_msg}",
-        value=(""),
-        inline=False
-    )
-
+    embed.add_field(name=f"**Rank:** {rank_msg}", value="", inline=False)
     await interaction.response.send_message(embed=embed)
 
-# /scan command
+# /scan
 async def handle_scan(interaction: discord.Interaction, image: discord.Attachment):
     user_id = str(interaction.user.id)
     was_new_user = user_id not in data
@@ -522,12 +540,9 @@ async def handle_scan(interaction: discord.Interaction, image: discord.Attachmen
 
     user_lang = data[user_id].get("language", "en")
     ocr_langs_to_use = [user_lang]
-
-    # Always include English for fallback
     if "en" not in ocr_langs_to_use:
         ocr_langs_to_use.append("en")
 
-    # Send a "processing" embed
     processing_embed = Embed(
         title="Scanning Artifact...",
         description=f"OCR is running using languages: {', '.join(ocr_langs_to_use)}",
@@ -543,54 +558,53 @@ async def handle_scan(interaction: discord.Interaction, image: discord.Attachmen
         output_bytes.seek(0)
 
         ocr_text = await online_easyocr(output_bytes.getvalue(), languages=ocr_langs_to_use)
-
-    except Exception as e:
-        error_embed = Embed(
-            title="OCR Failed",
-            description=f"OCR failed to process the image.",
-            color=0xe74c3c
-        )
+    except Exception:
+        error_embed = Embed(title="OCR Failed", description="OCR failed to process the image.", color=0xe74c3c)
         await interaction.edit_original_response(embed=error_embed)
         return
 
     crit_rate, crit_dmg, circlet_detected = parse_artifact_text(ocr_text)
-
-    # Circlets aren't allowed
     if circlet_detected:
-        circlet_embed = Embed(
-            title="Invalid Artifact",
-            description="Circlets are not allowed, sorry!",
-            color=0xe74c3c
-        )
-        await interaction.edit_original_response(embed=circlet_embed)
+        embed = Embed(title="Invalid Artifact", description="Circlets are not allowed!", color=0xe74c3c)
+        await interaction.edit_original_response(embed=embed)
         return
 
-    # Validate artifact
-    crit_rate = crit_rate or 0.0
-    crit_dmg = crit_dmg or 0.0
+    crit_rate, crit_dmg = crit_rate or 0.0, crit_dmg or 0.0
     crit_rate, crit_dmg, error = validate_artifact_stats(crit_rate, crit_dmg)
     if error:
         crit_rate = crit_dmg = 0.0
 
-    # Calcualte CV and store artifact
+    # Get old rank before adding artifact
+    old_rank = get_leaderboard_ranks().get(user_id)
+
+    # Add artifact
     cv = calculate_cv(crit_rate, crit_dmg)
     artifact = {"crit_rate": crit_rate, "crit_dmg": crit_dmg, "cv": cv}
     data[user_id]["artifacts"].append(artifact)
-    data[user_id]["max_cv"] = max(data[user_id]["max_cv"], cv)
+
+    # Incremental update
+    if cv > data[user_id]["max_cv"]:
+        data[user_id]["max_cv"] = cv
+    if cv >= 45:
+        data[user_id]["count_45"] += 1
+    if cv >= 40:
+        data[user_id]["count_40"] += 1
+
     save_data(data)
 
-    # Update user's rank
-    old_rank = get_leaderboard_ranks().get(user_id)
+    # Get new rank after adding artifact
     new_rank = get_leaderboard_ranks().get(user_id)
     rank_msg = build_rank_message(old_rank, new_rank, was_new_user)
 
     result_embed = Embed(title="Artifact Scan Result", color=0x1abc9c)
     result_embed.add_field(
-        name="", value=(
+        name="",
+        value=(
             f"CRIT Rate: {crit_rate:.1f}%\n"
             f"CRIT DMG: {crit_dmg:.1f}%\n"
             f"**CRIT Value: {cv:.1f}**"
-        ), inline=False
+        ),
+        inline=False
     )
     result_embed.add_field(name=f"**Rank:** {rank_msg}", value="", inline=False)
     result_embed.set_thumbnail(url="attachment://" + image.filename)
@@ -600,12 +614,9 @@ async def handle_scan(interaction: discord.Interaction, image: discord.Attachmen
             embed=result_embed,
             attachments=[discord.File(io.BytesIO(image_bytes), filename=image.filename)]
         )
-    except Exception as e:
-        # Fallback if the screenshot failed to send
-        result_embed.set_footer(text="Screenshot could not be attached because it took too long to send to Discord.")
-        await interaction.edit_original_response(
-            embed=result_embed
-        )
+    except Exception:
+        result_embed.set_footer(text="Screenshot could not be attached.")
+        await interaction.edit_original_response(embed=result_embed)
 
 @bot.tree.command(name="scan", description="Scan an artifact screenshot")
 @app_commands.describe(image="Upload a screenshot of your artifact")
@@ -640,7 +651,7 @@ async def language(interaction: discord.Interaction, language: str):
 
     embed = Embed(
         title="OCR Language Updated",
-        description=f"Your artifact OCR language has been set to **{language}** ✅",
+        description=f"Your language has been set to **{language}**",
         color=0x1abc9c
     )
     await interaction.response.send_message(embed=embed, ephemeral=True)
