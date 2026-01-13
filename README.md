@@ -6,9 +6,9 @@ A Discord bot that allows users to submit and track Genshin Impact artifact stat
 
 ## Installation
 
-1. **Install Python 3.11**
-   EasyOCR requires Python 3.11. Download here:
-   [https://www.python.org/downloads/release/python-311/](https://www.python.org/downloads/release/python-311/)
+1. **Install Python**
+   Download the latest version here:
+   [https://www.python.org/downloads/](https://www.python.org/downloads/)
 
 2. **Install dependencies**
 
@@ -158,34 +158,11 @@ Displays the CRIT Value leaderboard.
 
 * OCR languages are loaded dynamically from `languages.json`.
 * Each language entry defines:
-
   * `crit_rate`
   * `crit_dmg`
   * `circlet`
-* If Chinese (`ch_sim` or `ch_tra`) is present, **English is automatically added** for OCR compatibility.
 * Each user selects their OCR language with `/language`.
 * Missing or invalid OCR values are treated as **0**.
-
----
-
-## Leaderboard Caching System
-
-The bot uses **precomputed and incremental caching** for performance.
-
-On startup:
-
-* Max CRIT Value
-* 45+ CV count
-* 40+ CV count
-
-are computed for every user.
-
-On `/submit`, `/scan`, `/modify`, and `/remove`:
-
-* Only the affected user’s cached stats are updated.
-* The leaderboard never requires a full recomputation.
-
-This makes the bot fast even with large datasets.
 
 ---
 
