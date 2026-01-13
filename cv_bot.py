@@ -705,7 +705,7 @@ async def leaderboard(interaction: discord.Interaction):
 
         lines.append(
             f"{rank:<2}|{name.ljust(MAX_NAME_LENGTH)}|"
-            f"{user_data['max_cv']:<2.1f}|"
+            f"{user_data['max_cv']:<4.1f}|"
             f"{count_artifacts(user_data['artifacts'], 45):<3}|"
             f"{count_artifacts(user_data['artifacts'], 40):<3}"
         )
