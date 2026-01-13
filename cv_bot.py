@@ -9,6 +9,7 @@ from discord import app_commands, Embed
 import json
 import os
 import aiohttp
+import traceback
 
 # Constants
 MAX_CV = 54.6  # Maximum allowed CRIT Value
@@ -84,7 +85,8 @@ def ensure_user(user_id: str, user: discord.User = None):
             "display_name": None,
             "username": user.name if user else None,
             "artifacts": [],
-            "max_cv": 0
+            "max_cv": 0,
+            "language": "en"  # default language
         }
 
 # Get display name
@@ -522,16 +524,22 @@ async def handle_scan(interaction: discord.Interaction, image: discord.Attachmen
     was_new_user = user_id not in data
     ensure_user(user_id)
 
+    # Get user's preferred OCR language or default to "en"
+    user_lang = data[user_id].get("language", "en")
+    ocr_langs_to_use = [user_lang]
+
+    # Some languages require English (e.g., Chinese)
+    if "en" not in ocr_langs_to_use:
+        ocr_langs_to_use.append("en")
+
     try:
         image_bytes = await image.read()
-        # Convert to RGB to ensure format compatibility
         img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
         output_bytes = BytesIO()
         img.save(output_bytes, format="PNG")
         output_bytes.seek(0)
 
-        # Call online EasyOCR
-        ocr_text = await online_easyocr(output_bytes.getvalue(), languages=ocr_languages)
+        ocr_text = await online_easyocr(output_bytes.getvalue(), languages=ocr_langs_to_use)
 
     except Exception as e:
         embed = Embed(
@@ -595,7 +603,34 @@ async def scan(interaction: discord.Interaction, image: discord.Attachment):
 async def scan_short(interaction: discord.Interaction, image: discord.Attachment):
     await handle_scan(interaction, image)
 
-# /leaderboard
+# /language
+language_codes = ", ".join(languages.keys()) # Build dynamic description for the /language command
+@bot.tree.command(name="language", description="Set your OCR language for artifact scanning")
+@app_commands.describe(language=f"Available options: {language_codes}")
+async def language(interaction: discord.Interaction, language: str):
+    user_id = str(interaction.user.id)
+    ensure_user(user_id)
+    
+    language = language.lower()
+    if language not in languages:
+        embed = Embed(
+            title="Invalid Language",
+            description=f"Available language codes: {language_codes}",
+            color=0xe74c3c
+        )
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+        return
+
+    data[user_id]["language"] = language
+    save_data(data)
+
+    embed = Embed(
+        title="OCR Language Updated",
+        description=f"Your artifact OCR language has been set to **{language}** ✅",
+        color=0x1abc9c
+    )
+    await interaction.response.send_message(embed=embed, ephemeral=True)
+
 # /leaderboard
 @bot.tree.command(name="leaderboard", description="Display the CRIT Value leaderboard publicly")
 async def leaderboard(interaction: discord.Interaction):
